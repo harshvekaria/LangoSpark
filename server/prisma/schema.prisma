@@ -20,6 +20,11 @@ model User {
   progress      Progress[]
   pronunciationFeedback PronunciationFeedback[]
   conversationPractices ConversationPractice[]
+
+  // Language learning related fields
+  nativeLanguage    String?
+  learningProgress  LearningProgress[]
+  userLanguages     UserLanguage[]
 }
 
 model Profile {
@@ -63,13 +68,21 @@ model Progress {
 
 /// **Lesson & Quizzes**
 model Lesson {
-  id        String   @id @default(uuid())
-  title     String
-  language  String
-  content   String   /// JSON structure for lesson content
-  quiz      Quiz?
-  progress  Progress[]  /// ✅ Fix: Inverse relation for Progress
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  languageId  String
+  level       Level
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  language   Language           @relation(fields: [languageId], references: [id])
+  progress   LearningProgress[]
+
+  Progress Progress[]
+
+  Quiz Quiz[]
 }
 
 model Quiz {
@@ -96,4 +109,53 @@ model ConversationPractice {
   user      User     @relation(fields: [userId], references: [id])
   transcript Json     /// Store conversation history as JSON
   createdAt DateTime @default(now())
+}
+
+model Language {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique  // e.g., "en", "es", "fr"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userLanguages UserLanguage[]
+  lessons      Lesson[]
+}
+
+model UserLanguage {
+  id         String   @id @default(uuid())
+  userId     String
+  languageId String
+  level      Level    @default(BEGINNER)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id])
+  language Language @relation(fields: [languageId], references: [id])
+
+  @@unique([userId, languageId])
+}
+
+model LearningProgress {
+  id        String   @id @default(uuid())
+  userId    String
+  lessonId  String
+  score     Int      @default(0)
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id])
+  lesson  Lesson  @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId])
+}
+
+enum Level {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
 }

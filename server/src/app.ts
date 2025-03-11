@@ -7,6 +7,8 @@ import { PrismaClient } from '@prisma/client';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
+import languageRoutes from './routes/language.routes';
+import progressRoutes from './routes/progress.routes';
 
 // Initialize express app
 const app = express();
@@ -24,6 +26,8 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/languages', languageRoutes);
+app.use('/api/progress', progressRoutes);
 
 // Health check route
 app.get('/health', (_req: Request, res: Response) => {

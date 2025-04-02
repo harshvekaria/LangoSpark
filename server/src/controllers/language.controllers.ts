@@ -11,8 +11,9 @@ interface TypedRequestBody<T> extends Request {
 }
 
 interface AddLanguageBody {
-    languageId: string;
-    level: Level;
+    name: string;
+    code: string;
+    level?: Level;
 }
 
 interface UpdateLevelBody {
@@ -43,18 +44,37 @@ export const addUserLanguage = async (
     res: Response
 ): Promise<void> => {
     try {
-        const { languageId, level } = req.body;
+        const { name, code, level } = req.body;
         const userId = req.user.id;
 
-        // Check if language exists
-        const language = await prisma.language.findUnique({
-            where: { id: languageId }
+        // First, create or find the language
+        let language = await prisma.language.findUnique({
+            where: { code }
         });
 
         if (!language) {
-            res.status(404).json({
+            language = await prisma.language.create({
+                data: {
+                    name,
+                    code
+                }
+            });
+        }
+
+        // Check if user already has this language
+        const existingUserLanguage = await prisma.userLanguage.findUnique({
+            where: {
+                userId_languageId: {
+                    userId,
+                    languageId: language.id
+                }
+            }
+        });
+
+        if (existingUserLanguage) {
+            res.status(400).json({
                 success: false,
-                message: 'Language not found'
+                message: 'Language already added to your learning list'
             });
             return;
         }
@@ -63,7 +83,7 @@ export const addUserLanguage = async (
         const userLanguage = await prisma.userLanguage.create({
             data: {
                 userId,
-                languageId,
+                languageId: language.id,
                 level: level || 'BEGINNER'
             },
             include: {
@@ -105,12 +125,12 @@ export const getUserLanguages = async (req: TypedRequestBody<{}>, res: Response)
         console.error('Error fetching user languages:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching learning languages'
+            message: 'Error fetching user languages'
         });
     }
 };
 
-// Update user's language level
+// Update language level
 export const updateLanguageLevel = async (
     req: TypedRequestBody<UpdateLevelBody>,
     res: Response
@@ -119,7 +139,7 @@ export const updateLanguageLevel = async (
         const { languageId, level } = req.body;
         const userId = req.user.id;
 
-        const updatedUserLanguage = await prisma.userLanguage.update({
+        const userLanguage = await prisma.userLanguage.update({
             where: {
                 userId_languageId: {
                     userId,
@@ -135,7 +155,7 @@ export const updateLanguageLevel = async (
         res.json({
             success: true,
             message: 'Language level updated',
-            data: updatedUserLanguage
+            data: userLanguage
         });
     } catch (error) {
         console.error('Error updating language level:', error);
@@ -146,7 +166,7 @@ export const updateLanguageLevel = async (
     }
 };
 
-// Remove a language from user's learning list
+// Remove language from user's list
 export const removeUserLanguage = async (
     req: TypedRequestBody<{}> & { params: { languageId: string } },
     res: Response

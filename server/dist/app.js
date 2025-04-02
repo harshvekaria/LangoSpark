@@ -13,6 +13,7 @@ const client_1 = require("@prisma/client");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const language_routes_1 = __importDefault(require("./routes/language.routes"));
 const progress_routes_1 = __importDefault(require("./routes/progress.routes"));
+const ai_lessons_routes_1 = __importDefault(require("./routes/ai-lessons.routes"));
 const app = (0, express_1.default)();
 exports.prisma = new client_1.PrismaClient();
 app.use((0, helmet_1.default)());
@@ -24,6 +25,7 @@ app.use(express_1.default.urlencoded({ extended: true }));
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/languages', language_routes_1.default);
 app.use('/api/progress', progress_routes_1.default);
+app.use('/api/ai-lessons', ai_lessons_routes_1.default);
 app.get('/health', (_req, res) => {
     res.status(200).json({
         status: 'success',

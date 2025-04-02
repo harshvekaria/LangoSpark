@@ -22,22 +22,38 @@ const getAllLanguages = async (_req, res) => {
 exports.getAllLanguages = getAllLanguages;
 const addUserLanguage = async (req, res) => {
     try {
-        const { languageId, level } = req.body;
+        const { name, code, level } = req.body;
         const userId = req.user.id;
-        const language = await prisma.language.findUnique({
-            where: { id: languageId }
+        let language = await prisma.language.findUnique({
+            where: { code }
         });
         if (!language) {
-            res.status(404).json({
+            language = await prisma.language.create({
+                data: {
+                    name,
+                    code
+                }
+            });
+        }
+        const existingUserLanguage = await prisma.userLanguage.findUnique({
+            where: {
+                userId_languageId: {
+                    userId,
+                    languageId: language.id
+                }
+            }
+        });
+        if (existingUserLanguage) {
+            res.status(400).json({
                 success: false,
-                message: 'Language not found'
+                message: 'Language already added to your learning list'
             });
             return;
         }
         const userLanguage = await prisma.userLanguage.create({
             data: {
                 userId,
-                languageId,
+                languageId: language.id,
                 level: level || 'BEGINNER'
             },
             include: {
@@ -77,7 +93,7 @@ const getUserLanguages = async (req, res) => {
         console.error('Error fetching user languages:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching learning languages'
+            message: 'Error fetching user languages'
         });
     }
 };
@@ -86,7 +102,7 @@ const updateLanguageLevel = async (req, res) => {
     try {
         const { languageId, level } = req.body;
         const userId = req.user.id;
-        const updatedUserLanguage = await prisma.userLanguage.update({
+        const userLanguage = await prisma.userLanguage.update({
             where: {
                 userId_languageId: {
                     userId,
@@ -101,7 +117,7 @@ const updateLanguageLevel = async (req, res) => {
         res.json({
             success: true,
             message: 'Language level updated',
-            data: updatedUserLanguage
+            data: userLanguage
         });
     }
     catch (error) {

@@ -73,6 +73,7 @@ model Lesson {
   description String?
   languageId  String
   level       Level
+  content     Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

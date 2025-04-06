@@ -88,6 +88,7 @@ export const generateLesson = async (req: Request, res: Response) => {
                 description: 'AI-generated lesson',
                 languageId,
                 level,
+                content: lessonContent
             }
         });
 
@@ -114,20 +115,42 @@ export const generateQuiz = async (req: Request, res: Response) => {
     try {
         const { lessonId, numberOfQuestions = 5 } = req.body as QuizRequest;
 
+        // Get lesson with its content
         const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
-            include: { language: true }
+            include: { 
+                language: true,
+                Quiz: true
+            }
         });
 
         if (!lesson) {
-            return res.status(404).json({ message: 'Lesson not found' });
+            return res.status(404).json({ 
+                success: false,
+                message: 'Lesson not found' 
+            });
         }
 
-        const quiz = await generateQuizInternal(lessonId, null, numberOfQuestions);
-        return res.json({ success: true, quiz });
+        // Check if quiz already exists
+        if (lesson.Quiz && lesson.Quiz.length > 0) {
+            return res.json({ 
+                success: true, 
+                quiz: lesson.Quiz[0] 
+            });
+        }
+
+        // Generate new quiz
+        const quiz = await generateQuizInternal(lessonId, lesson.content, numberOfQuestions);
+        return res.json({ 
+            success: true, 
+            quiz 
+        });
     } catch (error) {
         console.error('Error generating quiz:', error);
-        return res.status(500).json({ message: 'Error generating quiz' });
+        return res.status(500).json({ 
+            success: false,
+            message: 'Error generating quiz' 
+        });
     }
 };
 
@@ -318,5 +341,60 @@ export const getPronunciationFeedback = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error generating pronunciation feedback:', error);
         return res.status(500).json({ message: 'Error generating pronunciation feedback' });
+    }
+};
+
+/**
+ * Get lesson content by ID
+ */
+export const getLessonContent = async (req: Request, res: Response) => {
+    try {
+        const { lessonId } = req.params;
+
+        // Get lesson with its quiz and content
+        const lesson = await prisma.lesson.findUnique({
+            where: { id: lessonId },
+            include: {
+                Quiz: true,
+                language: true
+            }
+        });
+
+        if (!lesson) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Lesson not found' 
+            });
+        }
+
+        // Get the quiz content
+        const quiz = lesson.Quiz?.[0];
+
+        // Return lesson with its content
+        return res.json({
+            success: true,
+            lesson: {
+                id: lesson.id,
+                title: lesson.title,
+                description: lesson.description,
+                level: lesson.level,
+                languageId: lesson.languageId,
+                language: lesson.language,
+                content: lesson.content || {
+                    vocabulary: [],
+                    grammar: "",
+                    examples: [],
+                    exercises: [],
+                    culturalNotes: ""
+                },
+                quiz: quiz?.questions || null
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching lesson:', error);
+        return res.status(500).json({ 
+            success: false,
+            message: 'Error fetching lesson' 
+        });
     }
 }; 

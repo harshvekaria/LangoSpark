@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../services/api';
+import { useRouter } from 'expo-router';
 
 interface Lesson {
   id: string;
@@ -26,6 +27,7 @@ export default function LanguageDetailScreen() {
   const [language, setLanguage] = useState<Language | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     fetchLanguageDetails();
@@ -33,15 +35,45 @@ export default function LanguageDetailScreen() {
 
   const fetchLanguageDetails = async () => {
     try {
-      const [languageResponse, progressResponse] = await Promise.all([
-        api.get(`/languages/${id}`),
-        api.get(`/progress/language/${id}`)
-      ]);
+      setLoading(true);
+      // First get all languages to find the selected one
+      const languagesResponse = await api.get('/languages/list');
+      if (languagesResponse.data.success) {
+        const selectedLanguage = languagesResponse.data.data.find(
+          (lang: Language) => lang.id === id
+        );
+        if (selectedLanguage) {
+          setLanguage(selectedLanguage);
+        } else {
+          console.error('Language not found');
+          Alert.alert('Error', 'Language not found');
+        }
+      }
 
-      setLanguage(languageResponse.data);
-      setLessons(progressResponse.data.data);
+      // Then get the progress
+      try {
+        const progressResponse = await api.get(`/progress/language/${id}`);
+        if (progressResponse.data.success) {
+          // Transform the progress data into the expected format
+          const transformedLessons = progressResponse.data.data.map((item: any) => ({
+            id: item.lesson.id,
+            title: item.lesson.title,
+            description: item.lesson.description,
+            level: item.lesson.level,
+            progress: item.progress
+          }));
+          setLessons(transformedLessons);
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error);
+        // Don't show error for progress since it's optional
+      }
     } catch (error) {
       console.error('Error fetching language details:', error);
+      Alert.alert(
+        'Error',
+        'Failed to load language details. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -49,15 +81,82 @@ export default function LanguageDetailScreen() {
 
   const generateNewLesson = async () => {
     try {
+      setLoading(true);
+      console.log('Generating new lesson with params:', {
+        languageId: id,
+        level: language?.level || 'BEGINNER',
+        topic: 'Basic Greetings'
+      });
+
       const response = await api.post('/ai-lessons/generate-lesson', {
         languageId: id,
-        level: language?.level || 'BEGINNER'
+        level: language?.level || 'BEGINNER',
+        topic: 'Basic Greetings'
+      }, {
+        timeout: 60000 // Increase timeout to 60 seconds
       });
       
-      // Refresh lessons after generating a new one
-      fetchLanguageDetails();
-    } catch (error) {
+      console.log('Lesson generation response:', response.data);
+
+      if (response.data.success) {
+        // Add the new lesson to the lessons list
+        const newLesson = {
+          id: response.data.lesson.id,
+          title: response.data.lesson.title,
+          description: response.data.lesson.description,
+          level: response.data.lesson.level,
+          progress: {
+            completed: false,
+            score: 0
+          }
+        };
+        setLessons(prevLessons => [...prevLessons, newLesson]);
+        
+        Alert.alert(
+          'Success',
+          'New lesson generated successfully!',
+          [
+            {
+              text: 'View Lesson',
+              onPress: () => {
+                router.push({
+                  pathname: '/languages/[id]/lesson/[lessonId]',
+                  params: { id: id as string, lessonId: response.data.lesson.id }
+                });
+              }
+            },
+            {
+              text: 'Stay Here',
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        console.error('Lesson generation failed:', response.data);
+        Alert.alert('Error', response.data.message || 'Failed to generate lesson');
+      }
+    } catch (error: any) {
       console.error('Error generating lesson:', error);
+      console.error('Error response:', error.response?.data);
+      
+      if (error.code === 'ECONNABORTED') {
+        Alert.alert(
+          'Timeout',
+          'The lesson generation is taking longer than expected. Please check if the server is running and try again.'
+        );
+      } else if (error.response?.status === 401) {
+        Alert.alert(
+          'Authentication Error',
+          'Please log in again to continue.'
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          error.response?.data?.message || 'Failed to generate lesson. Please try again.'
+        );
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -95,8 +194,11 @@ export default function LanguageDetailScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.languageName}>{language.name}</Text>
-        <Text style={[styles.level, styles[language.level.toLowerCase()]]}>
-          {language.level}
+        <Text style={[
+          styles.level,
+          language.level ? styles[language.level.toLowerCase() as keyof typeof styles] : styles.beginner
+        ]}>
+          {language.level || 'BEGINNER'}
         </Text>
       </View>
 
@@ -115,7 +217,12 @@ export default function LanguageDetailScreen() {
           <TouchableOpacity
             key={lesson.id}
             style={styles.lessonCard}
-            onPress={() => {/* Navigate to lesson detail */}}
+            onPress={() => {
+              router.push({
+                pathname: '/languages/[id]/lesson/[lessonId]',
+                params: { id: id as string, lessonId: lesson.id }
+              });
+            }}
           >
             <View style={styles.lessonHeader}>
               <Text style={styles.lessonTitle}>{lesson.title}</Text>

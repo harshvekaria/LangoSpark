@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPronunciationFeedback = exports.generateConversationPrompt = exports.generateQuiz = exports.generateLesson = void 0;
+exports.getLessonContent = exports.getPronunciationFeedback = exports.generateConversationPrompt = exports.generateQuiz = exports.generateLesson = void 0;
 const client_1 = require("@prisma/client");
 const sdk_1 = require("@anthropic-ai/sdk");
 const prisma = new client_1.PrismaClient();
@@ -65,6 +65,7 @@ const generateLesson = async (req, res) => {
                 description: 'AI-generated lesson',
                 languageId,
                 level,
+                content: lessonContent
             }
         });
         await generateQuizInternal(lesson.id, lessonContent);
@@ -84,17 +85,35 @@ const generateQuiz = async (req, res) => {
         const { lessonId, numberOfQuestions = 5 } = req.body;
         const lesson = await prisma.lesson.findUnique({
             where: { id: lessonId },
-            include: { language: true }
+            include: {
+                language: true,
+                Quiz: true
+            }
         });
         if (!lesson) {
-            return res.status(404).json({ message: 'Lesson not found' });
+            return res.status(404).json({
+                success: false,
+                message: 'Lesson not found'
+            });
         }
-        const quiz = await generateQuizInternal(lessonId, null, numberOfQuestions);
-        return res.json({ success: true, quiz });
+        if (lesson.Quiz && lesson.Quiz.length > 0) {
+            return res.json({
+                success: true,
+                quiz: lesson.Quiz[0]
+            });
+        }
+        const quiz = await generateQuizInternal(lessonId, lesson.content, numberOfQuestions);
+        return res.json({
+            success: true,
+            quiz
+        });
     }
     catch (error) {
         console.error('Error generating quiz:', error);
-        return res.status(500).json({ message: 'Error generating quiz' });
+        return res.status(500).json({
+            success: false,
+            message: 'Error generating quiz'
+        });
     }
 };
 exports.generateQuiz = generateQuiz;
@@ -265,4 +284,51 @@ const getPronunciationFeedback = async (req, res) => {
     }
 };
 exports.getPronunciationFeedback = getPronunciationFeedback;
+const getLessonContent = async (req, res) => {
+    var _a;
+    try {
+        const { lessonId } = req.params;
+        const lesson = await prisma.lesson.findUnique({
+            where: { id: lessonId },
+            include: {
+                Quiz: true,
+                language: true
+            }
+        });
+        if (!lesson) {
+            return res.status(404).json({
+                success: false,
+                message: 'Lesson not found'
+            });
+        }
+        const quiz = (_a = lesson.Quiz) === null || _a === void 0 ? void 0 : _a[0];
+        return res.json({
+            success: true,
+            lesson: {
+                id: lesson.id,
+                title: lesson.title,
+                description: lesson.description,
+                level: lesson.level,
+                languageId: lesson.languageId,
+                language: lesson.language,
+                content: lesson.content || {
+                    vocabulary: [],
+                    grammar: "",
+                    examples: [],
+                    exercises: [],
+                    culturalNotes: ""
+                },
+                quiz: (quiz === null || quiz === void 0 ? void 0 : quiz.questions) || null
+            }
+        });
+    }
+    catch (error) {
+        console.error('Error fetching lesson:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error fetching lesson'
+        });
+    }
+};
+exports.getLessonContent = getLessonContent;
 //# sourceMappingURL=ai-lessons.controllers.js.map

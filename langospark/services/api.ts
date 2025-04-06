@@ -1,19 +1,18 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 
-// Use environment variable or fallback to development IP
-const DEV_API_URL = 'http://192.168.1.54:3000/api';
-const PROD_API_URL = 'https://api.langospark.com/api'; // Replace with your production URL
-
-const baseURL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? DEV_API_URL : PROD_API_URL);
+// Get the API URL from environment variables or fallback to development
+const API_URL = Constants.expoConfig?.extra?.apiUrl || 
+  (__DEV__ ? 'http://localhost:3000/api' : 'https://api.langospark.com/api');
 
 export const api = axios.create({
-  baseURL,
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 30000, // 30 second timeout
 });
 
 // Add a request interceptor to add the auth token
@@ -22,16 +21,8 @@ api.interceptors.request.use(
     try {
       const token = await AsyncStorage.getItem('token');
       if (token) {
-        // Make sure to add the token in the correct format
         config.headers.Authorization = `Bearer ${token}`;
       }
-      // Log the request for debugging
-      console.log('API Request:', {
-        url: config.url,
-        method: config.method,
-        headers: config.headers,
-        data: config.data
-      });
       return config;
     } catch (error) {
       console.error('Request interceptor error:', error);
@@ -46,29 +37,45 @@ api.interceptors.request.use(
 // Add a response interceptor to handle errors
 api.interceptors.response.use(
   (response) => {
-    // Log successful responses for debugging
-    console.log('API Response:', {
-      url: response.config.url,
-      status: response.status,
-      data: response.data
-    });
     return response;
   },
   async (error) => {
-    // Log error details for debugging
-    console.error('API Error:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      message: error.message,
-      data: error.response?.data,
-      headers: error.config?.headers
-    });
+    const originalRequest = error.config;
 
+    // Handle token expiration
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        const refreshToken = await AsyncStorage.getItem('refreshToken');
+        if (refreshToken) {
+          const response = await axios.post(`${API_URL}/auth/refresh-token`, {
+            refreshToken
+          });
+          
+          const { token, refreshToken: newRefreshToken } = response.data;
+          await AsyncStorage.multiSet([
+            ['token', token],
+            ['refreshToken', newRefreshToken]
+          ]);
+          
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        await AsyncStorage.multiRemove(['token', 'refreshToken']);
+        router.replace('/auth/login');
+        return Promise.reject(refreshError);
+      }
+    }
+
+    // Handle other errors
     if (error.response?.status === 403) {
-      // Handle forbidden access
-      await AsyncStorage.removeItem('token');
+      await AsyncStorage.multiRemove(['token', 'refreshToken']);
       router.replace('/auth/login');
     }
+
     return Promise.reject(error);
   }
 ); 

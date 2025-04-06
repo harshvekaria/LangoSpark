@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { api } from '../../../../../services/api';
@@ -21,6 +21,7 @@ interface Quiz {
     question: string;
     options: string[];
     correctAnswer: number;
+    explanation?: string;
   }>;
 }
 
@@ -39,25 +40,43 @@ export default function LessonDetailScreen() {
 
   const fetchLessonContent = async () => {
     try {
-      const response = await api.get(`/lessons/${lessonId}`);
-      setLessonContent(response.data);
-      setLoading(false);
-    } catch (error) {
+      setLoading(true);
+      const response = await api.get(`/ai-lessons/lesson/${lessonId}`);
+      if (response.data.success) {
+        setLessonContent(response.data.lesson.content);
+        setQuiz(response.data.lesson.quiz);
+        setLoading(false);
+      } else {
+        console.error('Error fetching lesson content:', response.data.message);
+        Alert.alert('Error', response.data.message || 'Failed to load lesson content');
+        setLoading(false);
+      }
+    } catch (error: any) {
       console.error('Error fetching lesson content:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to load lesson content. Please try again.');
       setLoading(false);
     }
   };
 
   const generateQuiz = async () => {
     try {
+      setLoading(true);
       const response = await api.post('/ai-lessons/generate-quiz', {
-        languageId: id,
-        lessonId: lessonId
+        lessonId: lessonId,
+        numberOfQuestions: 5
       });
-      setQuiz(response.data);
-      setShowQuiz(true);
-    } catch (error) {
+      
+      if (response.data.success) {
+        setQuiz(response.data.quiz);
+        setShowQuiz(true);
+      } else {
+        Alert.alert('Error', response.data.message || 'Failed to generate quiz');
+      }
+    } catch (error: any) {
       console.error('Error generating quiz:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to generate quiz. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -99,7 +118,10 @@ export default function LessonDetailScreen() {
   if (!lessonContent) {
     return (
       <View style={styles.container}>
-        <Text>Lesson not found</Text>
+        <Text style={styles.errorText}>Lesson not found</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchLessonContent}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -143,13 +165,13 @@ export default function LessonDetailScreen() {
         </View>
       )}
 
-      {!showQuiz && !quizSubmitted && (
+      {!showQuiz && (
         <TouchableOpacity style={styles.quizButton} onPress={generateQuiz}>
           <Text style={styles.quizButtonText}>Take Quiz</Text>
         </TouchableOpacity>
       )}
 
-      {showQuiz && quiz && !quizSubmitted && (
+      {showQuiz && quiz && (
         <View style={styles.quizSection}>
           <Text style={styles.sectionTitle}>Quiz</Text>
           {quiz.questions.map((question, qIndex) => (
@@ -160,28 +182,25 @@ export default function LessonDetailScreen() {
                   key={oIndex}
                   style={[
                     styles.optionButton,
-                    quizAnswers[qIndex] === oIndex && styles.selectedOption
+                    quizAnswers[qIndex] === oIndex && styles.selectedOption,
+                    quizSubmitted && oIndex === question.correctAnswer && styles.correctOption,
+                    quizSubmitted && quizAnswers[qIndex] === oIndex && oIndex !== question.correctAnswer && styles.incorrectOption
                   ]}
-                  onPress={() => handleAnswerSelect(qIndex, oIndex)}
+                  onPress={() => !quizSubmitted && handleAnswerSelect(qIndex, oIndex)}
                 >
                   <Text style={styles.optionText}>{option}</Text>
                 </TouchableOpacity>
               ))}
+              {quizSubmitted && question.explanation && (
+                <Text style={styles.explanationText}>{question.explanation}</Text>
+              )}
             </View>
           ))}
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={submitQuiz}
-            disabled={quizAnswers.length !== quiz.questions.length}
-          >
-            <Text style={styles.submitButtonText}>Submit Quiz</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {quizSubmitted && (
-        <View style={styles.completedSection}>
-          <Text style={styles.completedText}>Quiz Completed!</Text>
+          {!quizSubmitted && (
+            <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
+              <Text style={styles.submitButtonText}>Submit Quiz</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </ScrollView>
@@ -295,16 +314,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  completedSection: {
-    backgroundColor: '#e8f5e9',
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+  explanationText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 8,
   },
-  completedText: {
+  errorText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#388e3c',
+    color: '#d32f2f',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#2196f3',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  correctOption: {
+    backgroundColor: '#c8e6c9',
+    borderColor: '#4caf50',
+  },
+  incorrectOption: {
+    backgroundColor: '#ffcdd2',
+    borderColor: '#f44336',
   },
 }); 

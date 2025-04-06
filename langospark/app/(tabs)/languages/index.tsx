@@ -51,21 +51,25 @@ export default function LanguagesScreen() {
         return;
       }
 
-      const response = await api.post('/ai-lessons/generate-lesson', {
-        languageId: language.id,
-        level: 'BEGINNER',
-        topic: 'Basic Greetings'
+      // Navigate to the language detail screen first
+      router.push({
+        pathname: '/languages/[id]',
+        params: { id: language.id }
       });
-      
-      if (response.data.success) {
-        // Navigate to the lesson screen with the generated lesson data
-        router.push({
-          pathname: '/languages/[id]',
-          params: { id: language.id }
+
+      // Then try to generate a lesson in the background
+      try {
+        await api.post('/ai-lessons/generate-lesson', {
+          languageId: language.id,
+          level: 'BEGINNER',
+          topic: 'Basic Greetings'
         });
+      } catch (error) {
+        console.error('Error generating lesson:', error);
+        // Don't show error to user since this is background operation
       }
     } catch (error) {
-      console.error('Error generating lesson:', error);
+      console.error('Error selecting language:', error);
       // If we get a 403, redirect to login
       if ((error as AxiosError)?.response?.status === 403) {
         router.replace('/auth/login');

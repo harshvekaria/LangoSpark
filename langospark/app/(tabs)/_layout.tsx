@@ -19,41 +19,83 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[theme].tint,
         tabBarInactiveTintColor: Colors[theme].tabIconDefault,
         tabBarStyle: {
-          backgroundColor: Colors[theme].background,
-          borderTopWidth: 1,
-          borderTopColor: '#eee',
-          paddingBottom: 5,
+          backgroundColor: Colors[theme].navBackground,
+          borderTopWidth: 0,
+          height: 60,
+          paddingBottom: 10,
           paddingTop: 5,
         },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
         headerStyle: {
-          backgroundColor: Colors[theme].background,
-          borderBottomWidth: 1,
-          borderBottomColor: '#eee',
+          backgroundColor: Colors[theme].navBackground,
+          borderBottomWidth: 0,
+          shadowColor: 'transparent',
+          elevation: 0,
         },
         headerTintColor: Colors[theme].text,
         headerTitleStyle: {
           fontWeight: 'bold',
+          fontSize: 18,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <FontAwesome name="home" size={24} color={color} />,
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <FontAwesome 
+              name="home" 
+              size={24} 
+              color={color} 
+              style={{ opacity: focused ? 1 : 0.7 }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: 'Explore',
+          tabBarIcon: ({ color, focused }) => (
+            <FontAwesome 
+              name="search" 
+              size={24} 
+              color={color} 
+              style={{ opacity: focused ? 1 : 0.7 }}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="languages"
         options={{
-          title: 'Languages',
-          tabBarIcon: ({ color }) => <FontAwesome name="language" size={24} color={color} />,
+          title: 'Library',
+          tabBarIcon: ({ color, focused }) => (
+            <FontAwesome 
+              name="book" 
+              size={24} 
+              color={color} 
+              style={{ opacity: focused ? 1 : 0.7 }}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <FontAwesome 
+              name="user" 
+              size={24} 
+              color={color} 
+              style={{ opacity: focused ? 1 : 0.7 }}
+            />
+          ),
         }}
       />
     </Tabs>

@@ -3,22 +3,43 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
  */
 
-const tintColorLight = '#2f95dc';
-const tintColorDark = '#fff';
+/**
+ * Colors based on Spotify's design language with modified backgrounds
+ */
+
+const spotifyGreen = '#1DB954';
+const spotifyBlack = '#191414';
+const spotifyDarkGray = '#282828';
+const spotifyLightGray = '#B3B3B3';
+const spotifyWhite = '#FFFFFF';
+
+// New colors
+const navBackground = '#F5F5F7';
+const navBackgroundDark = '#2E2E2E';
+const appBackground = '#FFFFFF';
+const appBackgroundDark = '#121212';
 
 export const Colors = {
   light: {
-    text: '#000',
-    background: '#fff',
-    tint: tintColorLight,
-    tabIconDefault: '#ccc',
-    tabIconSelected: tintColorLight,
+    text: spotifyBlack,
+    background: appBackground,
+    tint: spotifyGreen,
+    tabIconDefault: '#999999',
+    tabIconSelected: spotifyGreen,
+    card: spotifyWhite,
+    cardBorder: '#EEEEEE',
+    secondaryText: spotifyLightGray,
+    navBackground: navBackground,
   },
   dark: {
-    text: '#fff',
-    background: '#000',
-    tint: tintColorDark,
-    tabIconDefault: '#ccc',
-    tabIconSelected: tintColorDark,
+    text: spotifyWhite,
+    background: appBackgroundDark,
+    tint: spotifyGreen,
+    tabIconDefault: '#999999',
+    tabIconSelected: spotifyGreen,
+    card: spotifyDarkGray,
+    cardBorder: '#333333',
+    secondaryText: spotifyLightGray,
+    navBackground: navBackgroundDark,
   },
 };

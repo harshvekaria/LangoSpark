@@ -1,26 +1,26 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
-import { router } from 'expo-router';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../services/api';
 import { Colors } from '../../constants/Colors';
 import { useColorScheme } from 'react-native';
 
-export default function RegisterScreen() {
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+export default function ResetPasswordScreen() {
+  const params = useLocalSearchParams();
+  const token = params.token as string;
+  
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
   
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
 
-  const handleRegister = async () => {
-    if (!fullName || !email || !password || !confirmPassword) {
+  const handleResetPassword = async () => {
+    if (!password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -37,58 +37,41 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
-      await register(fullName, email, password);
-      // Navigation is handled by auth context
-    } catch (error) {
-      // Error is already handled by the AuthContext
+      const response = await api.post('/auth/reset-password', {
+        token,
+        newPassword: password
+      });
+
+      Alert.alert(
+        'Success',
+        'Your password has been reset successfully',
+        [{ text: 'Login', onPress: () => router.push('/auth/login') }]
+      );
+    } catch (error: any) {
+      console.error('Password reset failed:', error);
+      Alert.alert(
+        'Reset Failed',
+        error.response?.data?.message || 'An error occurred during password reset'
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.contentContainer}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Reset Password</Text>
         <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
-          Sign up to start your language learning journey
+          Create a new password for your account
         </Text>
       </View>
-      
+
       <View style={styles.form}>
         <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="user" size={18} color={colors.secondaryText} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="Full Name"
-            placeholderTextColor={colors.secondaryText}
-            value={fullName}
-            onChangeText={setFullName}
-            autoCapitalize="words"
-          />
-        </View>
-
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="envelope" size={18} color={colors.secondaryText} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, { color: colors.text }]}
-            placeholder="Email"
-            placeholderTextColor={colors.secondaryText}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="lock" size={20} color={colors.secondaryText} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, { color: colors.text }]}
-            placeholder="Password"
+            placeholder="New Password"
             placeholderTextColor={colors.secondaryText}
             value={password}
             onChangeText={setPassword}
@@ -107,10 +90,9 @@ export default function RegisterScreen() {
         </View>
 
         <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="lock" size={20} color={colors.secondaryText} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="Confirm Password"
+            placeholder="Confirm New Password"
             placeholderTextColor={colors.secondaryText}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
@@ -130,41 +112,37 @@ export default function RegisterScreen() {
 
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.tint }, isLoading && styles.buttonDisabled]}
-          onPress={handleRegister}
+          onPress={handleResetPassword}
           disabled={isLoading}
         >
           {isLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Create Account</Text>
+            <Text style={styles.buttonText}>Reset Password</Text>
           )}
         </TouchableOpacity>
 
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.secondaryText }]}>
-            Already have an account?
+        <TouchableOpacity
+          style={styles.backLink}
+          onPress={() => router.push('/auth/login')}
+        >
+          <Text style={[styles.backText, { color: colors.secondaryText }]}>
+            Back to <Text style={[styles.backTextBold, { color: colors.tint }]}>Login</Text>
           </Text>
-          <TouchableOpacity
-            onPress={() => router.replace('/auth/login')}
-          >
-            <Text style={[styles.loginText, { color: colors.tint }]}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  contentContainer: {
     padding: 20,
-    paddingTop: 60,
   },
   header: {
-    marginBottom: 30,
+    marginTop: 60,
+    marginBottom: 40,
   },
   title: {
     fontSize: 32,
@@ -179,30 +157,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 15,
+    position: 'relative',
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 15,
-    marginBottom: 20,
     height: 55,
   },
-  inputIcon: {
-    marginRight: 10,
-  },
   input: {
-    flex: 1,
-    height: '100%',
+    padding: 15,
+    borderRadius: 8,
     fontSize: 16,
+    height: '100%',
   },
   eyeIcon: {
-    padding: 5,
+    position: 'absolute',
+    right: 15,
+    top: 15,
   },
   button: {
     padding: 15,
     borderRadius: 30,
     alignItems: 'center',
-    marginVertical: 20,
+    marginTop: 20,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -212,18 +188,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  backLink: {
     marginTop: 20,
-    gap: 5,
+    alignItems: 'center',
   },
-  footerText: {
+  backText: {
     fontSize: 16,
   },
-  loginText: {
-    fontSize: 16,
+  backTextBold: {
     fontWeight: 'bold',
   },
 }); 

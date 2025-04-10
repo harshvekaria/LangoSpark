@@ -1,101 +1,57 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
 import { useColorScheme } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
 
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const theme = colorScheme ?? 'light';
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[theme].tint,
-        tabBarInactiveTintColor: Colors[theme].tabIconDefault,
+        tabBarActiveTintColor: colors.tint,
+        tabBarInactiveTintColor: colors.secondaryText,
         tabBarStyle: {
-          backgroundColor: Colors[theme].navBackground,
-          borderTopWidth: 0,
+          backgroundColor: colors.navBackground,
+          borderTopColor: colors.cardBorder,
           height: 60,
           paddingBottom: 10,
-          paddingTop: 5,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
+          paddingTop: 10,
         },
         headerStyle: {
-          backgroundColor: Colors[theme].navBackground,
-          borderBottomWidth: 0,
-          shadowColor: 'transparent',
-          elevation: 0,
+          backgroundColor: colors.navBackground,
         },
-        headerTintColor: Colors[theme].text,
         headerTitleStyle: {
-          fontWeight: 'bold',
-          fontSize: 18,
+          color: colors.text,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
+          tabBarIcon: ({ color }) => <FontAwesome name="home" size={24} color={color} />,
           headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-            <FontAwesome 
-              name="home" 
-              size={24} 
-              color={color} 
-              style={{ opacity: focused ? 1 : 0.7 }}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color, focused }) => (
-            <FontAwesome 
-              name="search" 
-              size={24} 
-              color={color} 
-              style={{ opacity: focused ? 1 : 0.7 }}
-            />
-          ),
         }}
       />
       <Tabs.Screen
         name="languages"
         options={{
-          title: 'Library',
-          tabBarIcon: ({ color, focused }) => (
-            <FontAwesome 
-              name="book" 
-              size={24} 
-              color={color} 
-              style={{ opacity: focused ? 1 : 0.7 }}
-            />
-          ),
+          title: 'Languages',
+          tabBarIcon: ({ color }) => <FontAwesome name="globe" size={24} color={color} />,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <FontAwesome 
-              name="user" 
-              size={24} 
-              color={color} 
-              style={{ opacity: focused ? 1 : 0.7 }}
-            />
-          ),
+          tabBarIcon: ({ color }) => <FontAwesome name="user" size={24} color={color} />,
+          headerShown: false,
         }}
       />
     </Tabs>

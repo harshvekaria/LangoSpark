@@ -20,6 +20,7 @@ model User {
   progress      Progress[]
   pronunciationFeedback PronunciationFeedback[]
   conversationPractices ConversationPractice[]
+  conversationExchanges ConversationExchange[]
 
   // Language learning related fields
   nativeLanguage    String?
@@ -112,6 +113,17 @@ model ConversationPractice {
   createdAt DateTime @default(now())
 }
 
+model ConversationExchange {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  languageId  String
+  language    Language @relation(fields: [languageId], references: [id])
+  userMessage String   /// The user's message
+  aiResponse  String   /// The AI's response
+  createdAt   DateTime @default(now())
+}
+
 model Language {
   id          String   @id @default(uuid())
   name        String   @unique
@@ -122,6 +134,7 @@ model Language {
   // Relations
   userLanguages UserLanguage[]
   lessons      Lesson[]
+  conversationExchanges ConversationExchange[]
 }
 
 model UserLanguage {

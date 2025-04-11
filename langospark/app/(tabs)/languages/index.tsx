@@ -1,57 +1,59 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import { api } from '../../../services/api';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AxiosError } from 'axios';
+import { useColorScheme } from 'react-native';
+import { Colors } from '../../../constants/Colors';
+import { languageService, lessonService } from '../../../services/endpointService';
+import { api } from '../../../services/api';
 
 interface Language {
   id: string;
   name: string;
   code: string;
-  level?: string;
+  level?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
   progress?: number;
-}
-
-interface ApiResponse {
-  success: boolean;
-  data: Language[];
 }
 
 export default function LanguagesScreen() {
   const [languages, setLanguages] = useState<Language[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [userLanguages, setUserLanguages] = useState<Language[]>([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
 
   useEffect(() => {
     fetchLanguages();
   }, []);
 
-  async function fetchLanguages() {
+  const fetchLanguages = async () => {
     try {
-      const response = await api.get<ApiResponse>('/languages/list');
+      setLoading(true);
+      const response = await api.get('/languages/list');
       if (response.data.success) {
         setLanguages(response.data.data);
+      } else {
+        Alert.alert('Error', 'Failed to fetch languages');
       }
     } catch (error) {
       console.error('Error fetching languages:', error);
+      Alert.alert('Error', 'Failed to load languages. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }
+  };
+
+  const handleLanguagePress = (language: Language) => {
+    router.push({
+      pathname: '/languages/[id]',
+      params: { id: language.id }
+    });
+  };
 
   const handleLanguageSelect = async (language: Language) => {
     try {
-      // Check if we have a valid token
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        console.error('No authentication token found');
-        router.replace('/auth/login');
-        return;
-      }
-
-      // Navigate to the language detail screen first
+      // Navigate to the language detail screen
       router.push({
         pathname: '/languages/[id]',
         params: { id: language.id }
@@ -59,9 +61,9 @@ export default function LanguagesScreen() {
 
       // Then try to generate a lesson in the background
       try {
-        await api.post('/ai-lessons/generate-lesson', {
+        await lessonService.generateLesson({
           languageId: language.id,
-          level: 'BEGINNER',
+          level: language.level || 'BEGINNER',
           topic: 'Basic Greetings'
         });
       } catch (error) {
@@ -70,58 +72,89 @@ export default function LanguagesScreen() {
       }
     } catch (error) {
       console.error('Error selecting language:', error);
-      // If we get a 403, redirect to login
-      if ((error as AxiosError)?.response?.status === 403) {
-        router.replace('/auth/login');
-      }
     }
   };
 
-  const renderLanguageItem = ({ item }: { item: Language }) => (
-    <TouchableOpacity
-      style={styles.languageCard}
-      onPress={() => handleLanguageSelect(item)}
-    >
-      <View style={styles.languageHeader}>
-        <Text style={styles.languageName}>{item.name}</Text>
-        <Text style={styles.languageCode}>{item.code.toUpperCase()}</Text>
-      </View>
-      <View style={styles.progressContainer}>
-        <View style={styles.levelContainer}>
-          <Text style={[styles.levelText, { color: '#4CAF50' }]}>
-            BEGINNER
+  const renderLanguageItem = ({ item }: { item: Language }) => {
+    const isUserLanguage = userLanguages.some(lang => lang.id === item.id);
+    
+    return (
+      <TouchableOpacity
+        style={[styles.languageCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+        onPress={() => handleLanguageSelect(item)}
+      >
+        <View style={styles.languageHeader}>
+          <Text style={[styles.languageName, { color: colors.text }]}>{item.name}</Text>
+          <Text style={[styles.languageCode, { color: colors.secondaryText, backgroundColor: colors.navBackground }]}>
+            {item.code.toUpperCase()}
           </Text>
         </View>
-        <Text style={styles.progressText}>Start Learning</Text>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.progressContainer}>
+          {isUserLanguage ? (
+            <>
+              <View style={styles.levelContainer}>
+                <Text style={[styles.levelText, { color: colors.tint }]}>
+                  {item.level || 'BEGINNER'}
+                </Text>
+              </View>
+              <Text style={[styles.progressText, { color: colors.secondaryText }]}>
+                {item.progress ? `${item.progress}% complete` : 'Continue learning'}
+              </Text>
+            </>
+          ) : (
+            <Text style={[styles.progressText, { color: colors.tint }]}>Start Learning</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2f95dc" />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.tint} />
       </View>
     );
   }
 
   if (languages.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <FontAwesome name="language" size={64} color="#ccc" />
-        <Text style={styles.emptyText}>No languages available</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: colors.background }]}>
+        <FontAwesome name="language" size={64} color={colors.secondaryText} />
+        <Text style={[styles.emptyText, { color: colors.secondaryText }]}>No languages available</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={languages}
-        renderItem={renderLanguageItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-      />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.text }]}>Languages</Text>
+      </View>
+      
+      {userLanguages.length > 0 && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Languages</Text>
+          <FlatList
+            data={userLanguages}
+            renderItem={renderLanguageItem}
+            keyExtractor={(item) => `user-${item.id}`}
+            contentContainerStyle={styles.listContainer}
+            horizontal={false}
+            scrollEnabled={false}
+          />
+        </View>
+      )}
+      
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>All Languages</Text>
+        <FlatList
+          data={languages}
+          renderItem={renderLanguageItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+        />
+      </View>
     </View>
   );
 }
@@ -129,7 +162,24 @@ export default function LanguagesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: 'bold',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    paddingHorizontal: 20,
+    marginBottom: 10,
   },
   loadingContainer: {
     flex: 1,
@@ -144,24 +194,15 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#666',
   },
   listContainer: {
-    padding: 16,
+    paddingHorizontal: 16,
   },
   languageCard: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginVertical: 8,
+    borderWidth: 1,
   },
   languageHeader: {
     flexDirection: 'row',
@@ -172,12 +213,9 @@ const styles = StyleSheet.create({
   languageName: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
   },
   languageCode: {
     fontSize: 14,
-    color: '#666',
-    backgroundColor: '#f0f0f0',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -195,6 +233,5 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
-    color: '#666',
   },
 }); 

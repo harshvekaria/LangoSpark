@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.removeUserLanguage = exports.updateLanguageLevel = exports.getUserLanguages = exports.addUserLanguage = exports.getAllLanguages = void 0;
+exports.removeUserLanguage = exports.updateLanguageLevel = exports.getUserLanguages = exports.addUserLanguage = exports.getLanguageById = exports.getAllLanguages = void 0;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 const getAllLanguages = async (_req, res) => {
@@ -20,6 +20,33 @@ const getAllLanguages = async (_req, res) => {
     }
 };
 exports.getAllLanguages = getAllLanguages;
+const getLanguageById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const language = await prisma.language.findUnique({
+            where: { id }
+        });
+        if (!language) {
+            res.status(404).json({
+                success: false,
+                message: 'Language not found'
+            });
+            return;
+        }
+        res.json({
+            success: true,
+            data: language
+        });
+    }
+    catch (error) {
+        console.error('Error fetching language:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching language'
+        });
+    }
+};
+exports.getLanguageById = getLanguageById;
 const addUserLanguage = async (req, res) => {
     try {
         const { name, code, level } = req.body;

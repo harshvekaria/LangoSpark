@@ -9,5 +9,6 @@ router.get('/my-languages', auth_middleware_1.authenticateToken, language_contro
 router.post('/add', auth_middleware_1.authenticateToken, language_controllers_1.addUserLanguage);
 router.put('/level', auth_middleware_1.authenticateToken, language_controllers_1.updateLanguageLevel);
 router.delete('/:languageId', auth_middleware_1.authenticateToken, language_controllers_1.removeUserLanguage);
+router.get('/:id', language_controllers_1.getLanguageById);
 exports.default = router;
 //# sourceMappingURL=language.routes.js.map

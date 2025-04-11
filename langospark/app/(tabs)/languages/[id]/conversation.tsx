@@ -5,6 +5,9 @@ import { FontAwesome } from '@expo/vector-icons';
 import { api } from '../../../../services/api';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
+import { Colors } from '../../../../constants/Colors';
+import { useColorScheme } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface ConversationPrompt {
   context: string;
@@ -32,6 +35,9 @@ export default function ConversationScreen() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
 
   useEffect(() => {
     generateConversationPrompt();
@@ -47,17 +53,42 @@ export default function ConversationScreen() {
 
   const generateConversationPrompt = async () => {
     try {
+      setLoading(true);
       const response = await api.post('/ai-lessons/conversation-prompt', {
-        languageId: id
+        languageId: id,
+        level: 'BEGINNER'
       });
-      setPrompt(response.data.data);
-      setLoading(false);
+      
+      if (response.data.success) {
+        // Extract the content from the conversation data
+        const conversationData = response.data.conversation.content;
+        
+        // Transform the data to match our expected format
+        const formattedPrompt = {
+          context: conversationData.context || '',
+          vocabulary: conversationData.vocabulary || [],
+          script: conversationData.script?.map((item: Record<string, string>) => {
+            // Handle different language code formats
+            const languageCode = Object.keys(item).find(key => key !== 'english') || 'target';
+            return {
+              target: item[languageCode] || '',
+              translation: item.english || ''
+            };
+          }) || [],
+          culturalNotes: conversationData.culturalNotes || ''
+        };
+        
+        setPrompt(formattedPrompt);
+      } else {
+        Alert.alert('Error', response.data.message || 'Failed to generate conversation');
+      }
     } catch (error: any) {
       console.error('Error generating conversation prompt:', error);
       Alert.alert(
         'Error',
         error.response?.data?.message || 'Failed to generate conversation prompt'
       );
+    } finally {
       setLoading(false);
     }
   };
@@ -85,17 +116,42 @@ export default function ConversationScreen() {
     if (!recording) return;
 
     try {
+      setFeedbackLoading(true);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setIsRecording(false);
       setRecording(null);
 
       if (uri) {
-        const response = await api.post('/ai-lessons/pronunciation-feedback', {
-          languageId: id,
-          audioUri: uri
-        });
-        setFeedback(response.data.data.feedback);
+        try {
+          console.log('Sending pronunciation feedback request with URI:', uri);
+          const response = await api.post('/ai-lessons/pronunciation-feedback', {
+            languageId: id,
+            audioUri: uri
+          });
+          
+          console.log('Pronunciation feedback response:', response.data);
+          
+          if (response.data.success && response.data.feedback) {
+            // Format the feedback to display in the UI
+            const feedbackData = response.data.feedback;
+            const formattedFeedback = `
+              ${feedbackData.feedback}
+              
+              Accuracy: ${Math.round(feedbackData.accuracy * 100)}%
+              
+              ${feedbackData.suggestions ? 'Suggestions:' : ''}
+              ${feedbackData.suggestions ? feedbackData.suggestions.map((s: string) => `• ${s}`).join('\n') : ''}
+            `;
+            
+            setFeedback(formattedFeedback.trim());
+          } else {
+            throw new Error(response.data.message || 'Invalid response format');
+          }
+        } catch (apiError: any) {
+          console.error('API error during pronunciation feedback:', apiError);
+          throw apiError;
+        }
       }
     } catch (error: any) {
       console.error('Error stopping recording:', error);
@@ -103,6 +159,8 @@ export default function ConversationScreen() {
         'Error',
         error.response?.data?.message || 'Failed to process recording'
       );
+    } finally {
+      setFeedbackLoading(false);
     }
   };
 
@@ -159,21 +217,21 @@ export default function ConversationScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.conversationContainer}>
         {prompt && (
           <>
-            <View style={styles.contextContainer}>
-              <Text style={styles.contextTitle}>Context</Text>
-              <Text style={styles.contextText}>{prompt.context}</Text>
+            <View style={[styles.contextContainer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={[styles.contextTitle, { color: colors.text }]}>Context</Text>
+              <Text style={[styles.contextText, { color: colors.text }]}>{prompt.context}</Text>
             </View>
 
-            <View style={styles.vocabularyContainer}>
-              <Text style={styles.vocabularyTitle}>Vocabulary</Text>
+            <View style={[styles.vocabularyContainer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={[styles.vocabularyTitle, { color: colors.text }]}>Vocabulary</Text>
               {prompt.vocabulary.map((item, index) => (
                 <View key={index} style={styles.vocabularyItem}>
-                  <Text style={styles.vocabularyWord}>{item.word}</Text>
-                  <Text style={styles.vocabularyTranslation}>{item.translation}</Text>
+                  <Text style={[styles.vocabularyWord, { color: colors.text }]}>{item.word}</Text>
+                  <Text style={[styles.vocabularyTranslation, { color: colors.secondaryText }]}>{item.translation}</Text>
                 </View>
               ))}
             </View>
@@ -186,32 +244,58 @@ export default function ConversationScreen() {
               key={index}
               style={[
                 styles.messageContainer,
-                message.isUser ? styles.userMessage : styles.botMessage
+                message.isUser 
+                  ? [styles.userMessage, { backgroundColor: colors.tint }] 
+                  : [styles.botMessage, { backgroundColor: colors.card }]
               ]}
             >
-              <Text style={styles.messageText}>{message.text}</Text>
+              <Text style={[
+                styles.messageText, 
+                { color: message.isUser ? '#FFFFFF' : colors.text }
+              ]}>
+                {message.text}
+              </Text>
             </View>
           ))}
         </View>
       </ScrollView>
 
-      {feedback && (
-        <View style={styles.feedbackContainer}>
-          <Text style={styles.feedbackTitle}>Pronunciation Feedback</Text>
-          <Text style={styles.feedbackText}>{feedback}</Text>
+      {feedbackLoading && (
+        <View style={[styles.feedbackLoadingContainer, { backgroundColor: colors.card }]}>
+          <ActivityIndicator size="small" color={colors.tint} />
+          <Text style={[styles.feedbackLoadingText, { color: colors.text }]}>
+            Analyzing pronunciation...
+          </Text>
         </View>
       )}
 
-      <View style={styles.inputContainer}>
+      {feedback && !feedbackLoading && (
+        <View style={[styles.feedbackContainer, { backgroundColor: colors.card, borderColor: colors.tint }]}>
+          <Text style={[styles.feedbackTitle, { color: colors.tint }]}>Pronunciation Feedback</Text>
+          <Text style={[styles.feedbackText, { color: colors.text }]}>{feedback}</Text>
+          <TouchableOpacity 
+            style={styles.closeFeedbackButton}
+            onPress={() => setFeedback(null)}
+          >
+            <FontAwesome name="close" size={16} color={colors.secondaryText} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.cardBorder }]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.cardBorder }]}
           value={userInput}
           onChangeText={setUserInput}
           placeholder="Type your message..."
+          placeholderTextColor={colors.secondaryText}
           multiline
         />
         <TouchableOpacity
-          style={[styles.recordButton, isRecording && styles.recordingButton]}
+          style={[
+            styles.recordButton, 
+            isRecording ? [styles.recordingButton, { backgroundColor: '#F44336' }] : { backgroundColor: colors.tint }
+          ]}
           onPress={isRecording ? stopRecording : startRecording}
         >
           <FontAwesome
@@ -221,7 +305,7 @@ export default function ConversationScreen() {
           />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.sendButton}
+          style={[styles.sendButton, { backgroundColor: userInput.trim() ? colors.tint : colors.cardBorder }]}
           onPress={sendMessage}
           disabled={!userInput.trim()}
         >
@@ -235,7 +319,6 @@ export default function ConversationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   conversationContainer: {
     flex: 1,
@@ -244,8 +327,8 @@ const styles = StyleSheet.create({
   contextContainer: {
     marginBottom: 20,
     padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   contextTitle: {
     fontSize: 18,
@@ -254,58 +337,71 @@ const styles = StyleSheet.create({
   },
   contextText: {
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 22,
   },
   vocabularyContainer: {
     marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   vocabularyTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   vocabularyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
+    marginBottom: 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   vocabularyWord: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    marginBottom: 4,
   },
   vocabularyTranslation: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
   },
   conversationHistory: {
-    flex: 1,
     marginBottom: 16,
   },
   messageContainer: {
-    maxWidth: '80%',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
+    padding: 14,
+    borderRadius: 16,
+    marginBottom: 12,
+    maxWidth: '85%',
   },
   userMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
   },
   botMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f0f0f0',
   },
   messageText: {
-    fontSize: 16,
-    color: '#fff',
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  feedbackLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+  },
+  feedbackLoadingText: {
+    marginLeft: 8,
+    fontSize: 14,
   },
   feedbackContainer: {
     padding: 16,
-    backgroundColor: '#fff3cd',
-    borderTopWidth: 1,
-    borderTopColor: '#ffeeba',
+    margin: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    position: 'relative',
   },
   feedbackTitle: {
     fontSize: 16,
@@ -314,43 +410,48 @@ const styles = StyleSheet.create({
   },
   feedbackText: {
     fontSize: 14,
-    color: '#856404',
+    lineHeight: 20,
+  },
+  closeFeedbackButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: 5,
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 16,
+    alignItems: 'center',
+    padding: 12,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
   },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    minHeight: 40,
+    maxHeight: 100,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
     marginRight: 8,
-    maxHeight: 100,
+    borderWidth: 1,
   },
   recordButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 8,
   },
   recordingButton: {
-    backgroundColor: '#dc3545',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 

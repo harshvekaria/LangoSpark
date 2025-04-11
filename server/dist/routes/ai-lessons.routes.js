@@ -8,6 +8,7 @@ router.post('/generate-lesson', auth_middleware_1.authenticateToken, ai_lessons_
 router.post('/generate-quiz', auth_middleware_1.authenticateToken, ai_lessons_controllers_1.generateQuiz);
 router.get('/lesson/:lessonId', auth_middleware_1.authenticateToken, ai_lessons_controllers_1.getLessonContent);
 router.post('/conversation-prompt', auth_middleware_1.authenticateToken, ai_lessons_controllers_1.generateConversationPrompt);
+router.post('/conversation-response', auth_middleware_1.authenticateToken, ai_lessons_controllers_1.getConversationResponse);
 router.post('/pronunciation-feedback', auth_middleware_1.authenticateToken, ai_lessons_controllers_1.getPronunciationFeedback);
 exports.default = router;
 //# sourceMappingURL=ai-lessons.routes.js.map

@@ -38,6 +38,36 @@ export const getAllLanguages = async (_req: Request, res: Response): Promise<voi
     }
 };
 
+// Get language by ID
+export const getLanguageById = async (req: Request & { params: { id: string } }, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        
+        const language = await prisma.language.findUnique({
+            where: { id }
+        });
+
+        if (!language) {
+            res.status(404).json({
+                success: false,
+                message: 'Language not found'
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: language
+        });
+    } catch (error) {
+        console.error('Error fetching language:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching language'
+        });
+    }
+};
+
 // Add a language to user's learning list
 export const addUserLanguage = async (
     req: TypedRequestBody<AddLanguageBody>,

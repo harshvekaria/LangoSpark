@@ -3,6 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../services/api';
 import { useRouter } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors } from '../../../constants/Colors';
+import { useColorScheme } from 'react-native';
+import { SpotifyButton } from '../../../components/ui/SpotifyButton';
 
 interface Lesson {
   id: string;
@@ -28,6 +33,8 @@ export default function LanguageDetailScreen() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
+  const colors = Colors[colorScheme];
 
   useEffect(() => {
     fetchLanguageDetails();
@@ -36,37 +43,19 @@ export default function LanguageDetailScreen() {
   const fetchLanguageDetails = async () => {
     try {
       setLoading(true);
-      // First get all languages to find the selected one
-      const languagesResponse = await api.get('/languages/list');
-      if (languagesResponse.data.success) {
-        const selectedLanguage = languagesResponse.data.data.find(
-          (lang: Language) => lang.id === id
-        );
-        if (selectedLanguage) {
-          setLanguage(selectedLanguage);
-        } else {
-          console.error('Language not found');
-          Alert.alert('Error', 'Language not found');
-        }
+      // Get language details
+      const languageResponse = await api.get(`/languages/${id}`);
+      if (languageResponse.data.success) {
+        setLanguage(languageResponse.data.data);
+      } else {
+        Alert.alert('Error', 'Language not found');
+        return;
       }
 
-      // Then get the progress
-      try {
-        const progressResponse = await api.get(`/progress/language/${id}`);
-        if (progressResponse.data.success) {
-          // Transform the progress data into the expected format
-          const transformedLessons = progressResponse.data.data.map((item: any) => ({
-            id: item.lesson.id,
-            title: item.lesson.title,
-            description: item.lesson.description,
-            level: item.lesson.level,
-            progress: item.progress
-          }));
-          setLessons(transformedLessons);
-        }
-      } catch (error) {
-        console.error('Error fetching progress:', error);
-        // Don't show error for progress since it's optional
+      // Get lessons for this language
+      const lessonsResponse = await api.get(`/languages/${id}/lessons`);
+      if (lessonsResponse.data.success) {
+        setLessons(lessonsResponse.data.data);
       }
     } catch (error) {
       console.error('Error fetching language details:', error);
@@ -79,19 +68,19 @@ export default function LanguageDetailScreen() {
     }
   };
 
-  const generateNewLesson = async () => {
+  const generateNewLesson = async (level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED') => {
     try {
       setLoading(true);
       console.log('Generating new lesson with params:', {
         languageId: id,
-        level: language?.level || 'BEGINNER',
-        topic: 'Basic Greetings'
+        level: level,
+        topic: getDefaultTopic(level)
       });
 
       const response = await api.post('/ai-lessons/generate-lesson', {
         languageId: id,
-        level: language?.level || 'BEGINNER',
-        topic: 'Basic Greetings'
+        level: level,
+        topic: getDefaultTopic(level)
       }, {
         timeout: 60000 // Increase timeout to 60 seconds
       });
@@ -114,7 +103,7 @@ export default function LanguageDetailScreen() {
         
         Alert.alert(
           'Success',
-          'New lesson generated successfully!',
+          `New ${level.toLowerCase()} lesson generated successfully!`,
           [
             {
               text: 'View Lesson',
@@ -160,6 +149,19 @@ export default function LanguageDetailScreen() {
     }
   };
 
+  const getDefaultTopic = (level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED'): string => {
+    switch (level) {
+      case 'BEGINNER':
+        return 'Basic Greetings and Introductions';
+      case 'INTERMEDIATE':
+        return 'Daily Life and Routines';
+      case 'ADVANCED':
+        return 'Business and Professional Communication';
+      default:
+        return 'General Conversation';
+    }
+  };
+
   const startConversation = async () => {
     try {
       const response = await api.post('/ai-lessons/conversation-prompt', {
@@ -168,78 +170,170 @@ export default function LanguageDetailScreen() {
       });
       
       // Navigate to conversation screen with the generated prompt
-      // router.push(`/languages/${id}/conversation`);
+      router.push({
+        pathname: '/languages/[id]/conversation',
+        params: { id: id as string }
+      });
     } catch (error) {
       console.error('Error starting conversation:', error);
     }
   };
 
+  const getLevelColor = (level?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED') => {
+    if (!level) return colors.tint;
+    
+    switch (level) {
+      case 'BEGINNER':
+        return '#4CAF50';
+      case 'INTERMEDIATE':
+        return '#FF9800';
+      case 'ADVANCED':
+        return '#F44336';
+      default:
+        return colors.tint;
+    }
+  };
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0000ff" />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.tint} />
       </View>
     );
   }
 
   if (!language) {
     return (
-      <View style={styles.container}>
-        <Text>Language not found</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <Text style={{ color: colors.text }}>Language not found</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.languageName}>{language.name}</Text>
-        <Text style={[
-          styles.level,
-          language.level ? styles[language.level.toLowerCase() as keyof typeof styles] : styles.beginner
-        ]}>
-          {language.level || 'BEGINNER'}
-        </Text>
-      </View>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={[getLevelColor(language.level), colors.background]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 0.6 }}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.languageName, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
+            {language.name}
+          </Text>
+          <View style={[
+            styles.levelBadge,
+            { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.3)' }
+          ]}>
+            <Text style={[
+              styles.level,
+              { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+            ]}>
+              {language.level || 'BEGINNER'}
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
 
-      <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionButton} onPress={generateNewLesson}>
-          <Text style={styles.actionButtonText}>Generate New Lesson</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={startConversation}>
-          <Text style={styles.actionButtonText}>Practice Conversation</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={styles.content}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Generate New Lessons</Text>
+          <Text style={[styles.sectionSubtitle, { color: colors.secondaryText }]}>
+            Choose a difficulty level to generate a personalized lesson
+          </Text>
+          <View style={styles.levelButtons}>
+            <TouchableOpacity 
+              style={[styles.levelButton, { backgroundColor: '#4CAF50' }]} 
+              onPress={() => generateNewLesson('BEGINNER')}
+            >
+              <FontAwesome5 name="baby" size={18} color="white" style={styles.buttonIcon} />
+              <Text style={styles.levelButtonText}>Beginner</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.levelButton, { backgroundColor: '#FF9800' }]} 
+              onPress={() => generateNewLesson('INTERMEDIATE')}
+            >
+              <FontAwesome5 name="user" size={18} color="white" style={styles.buttonIcon} />
+              <Text style={styles.levelButtonText}>Intermediate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.levelButton, { backgroundColor: '#F44336' }]} 
+              onPress={() => generateNewLesson('ADVANCED')}
+            >
+              <FontAwesome5 name="user-graduate" size={18} color="white" style={styles.buttonIcon} />
+              <Text style={styles.levelButtonText}>Advanced</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <View style={styles.lessonsContainer}>
-        <Text style={styles.sectionTitle}>Your Lessons</Text>
-        {lessons.map((lesson) => (
-          <TouchableOpacity
-            key={lesson.id}
-            style={styles.lessonCard}
-            onPress={() => {
-              router.push({
-                pathname: '/languages/[id]/lesson/[lessonId]',
-                params: { id: id as string, lessonId: lesson.id }
-              });
-            }}
-          >
-            <View style={styles.lessonHeader}>
-              <Text style={styles.lessonTitle}>{lesson.title}</Text>
-              {lesson.progress?.completed && (
-                <Text style={styles.completedBadge}>Completed</Text>
-              )}
+        <SpotifyButton
+          title="Practice Conversation"
+          variant="primary"
+          size="large"
+          style={styles.conversationButton}
+          onPress={startConversation}
+        />
+
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Lessons</Text>
+          
+          {lessons.length === 0 ? (
+            <View style={styles.emptyLessons}>
+              <FontAwesome5 name="book" size={32} color={colors.secondaryText} />
+              <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
+                No lessons yet. Generate your first lesson above!
+              </Text>
             </View>
-            <Text style={styles.lessonDescription}>{lesson.description}</Text>
-            {lesson.progress && (
-              <View style={styles.progressContainer}>
-                <Text style={styles.progressText}>
-                  Score: {lesson.progress.score}%
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+          ) : (
+            <>
+              {lessons.map((lesson) => (
+                <TouchableOpacity
+                  key={lesson.id}
+                  style={[styles.lessonCard, { backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/languages/[id]/lesson/[lessonId]',
+                      params: { id: id as string, lessonId: lesson.id }
+                    });
+                  }}
+                >
+                  <View style={styles.lessonHeader}>
+                    <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
+                    <View style={[
+                      styles.lessonLevelBadge, 
+                      { backgroundColor: getLevelColor(lesson.level) }
+                    ]}>
+                      <Text style={styles.lessonLevelText}>
+                        {lesson.level.charAt(0)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.lessonDescription, { color: colors.secondaryText }]}>
+                    {lesson.description}
+                  </Text>
+                  {lesson.progress && (
+                    <View style={styles.progressContainer}>
+                      <View style={styles.progressBar}>
+                        <View 
+                          style={[
+                            styles.progressFill, 
+                            { width: `${lesson.progress.score}%`, backgroundColor: colors.tint }
+                          ]} 
+                        />
+                      </View>
+                      <Text style={[styles.progressText, { color: colors.secondaryText }]}>
+                        {lesson.progress.completed 
+                          ? `Completed - ${lesson.progress.score}%` 
+                          : 'Not started'}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+        </View>
       </View>
     </ScrollView>
   );
@@ -248,73 +342,94 @@ export default function LanguageDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerGradient: {
+    paddingTop: 30,
+    paddingBottom: 40,
   },
   header: {
     padding: 16,
-    backgroundColor: 'white',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
   },
   languageName: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
   },
+  levelBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
   level: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
     fontSize: 14,
     fontWeight: '600',
   },
-  beginner: {
-    backgroundColor: '#e3f2fd',
-    color: '#1976d2',
+  content: {
+    marginTop: -20,
+    paddingHorizontal: 16,
+    paddingBottom: 30,
   },
-  intermediate: {
-    backgroundColor: '#fff3e0',
-    color: '#f57c00',
-  },
-  advanced: {
-    backgroundColor: '#e8f5e9',
-    color: '#388e3c',
-  },
-  actions: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: '#2196f3',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  lessonsContainer: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  card: {
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 16,
-  },
-  lessonCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    elevation: 2,
+    borderWidth: 1,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  sectionSubtitle: {
+    marginBottom: 16,
+  },
+  levelButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  levelButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  levelButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  conversationButton: {
+    marginBottom: 16,
+  },
+  emptyLessons: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  lessonCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   lessonHeader: {
     flexDirection: 'row',
@@ -325,26 +440,39 @@ const styles = StyleSheet.create({
   lessonTitle: {
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
   },
-  completedBadge: {
-    backgroundColor: '#e8f5e9',
-    color: '#388e3c',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  lessonLevelBadge: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  lessonLevelText: {
+    color: 'white',
+    fontWeight: 'bold',
     fontSize: 12,
-    fontWeight: '600',
   },
   lessonDescription: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 8,
   },
   progressContainer: {
     marginTop: 8,
   },
+  progressBar: {
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 2,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+  },
   progressText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 12,
   },
 }); 

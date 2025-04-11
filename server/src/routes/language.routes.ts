@@ -4,7 +4,8 @@ import {
     addUserLanguage,
     getUserLanguages,
     updateLanguageLevel,
-    removeUserLanguage
+    removeUserLanguage,
+    getLanguageById
 } from '../controllers/language.controllers';
 import { authenticateToken } from '../middleware/auth.middleware';
 
@@ -18,5 +19,8 @@ router.get('/my-languages', authenticateToken, getUserLanguages as any);
 router.post('/add', authenticateToken, addUserLanguage as any);
 router.put('/level', authenticateToken, updateLanguageLevel as any);
 router.delete('/:languageId', authenticateToken, removeUserLanguage as any);
+
+// Put dynamic routes last to avoid conflicts
+router.get('/:id', getLanguageById as any);
 
 export default router; 

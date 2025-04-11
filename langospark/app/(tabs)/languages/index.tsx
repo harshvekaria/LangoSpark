@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from 'react-native';
 import { Colors } from '../../../constants/Colors';
 import { languageService, lessonService } from '../../../services/endpointService';
+import { api } from '../../../services/api';
 
 interface Language {
   id: string;
   name: string;
   code: string;
-  level?: string;
+  level?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
   progress?: number;
 }
 
 export default function LanguagesScreen() {
   const [languages, setLanguages] = useState<Language[]>([]);
   const [userLanguages, setUserLanguages] = useState<Language[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
@@ -26,30 +27,29 @@ export default function LanguagesScreen() {
     fetchLanguages();
   }, []);
 
-  async function fetchLanguages() {
-    setIsLoading(true);
+  const fetchLanguages = async () => {
     try {
-      // Get all available languages
-      const allLanguagesResponse = await languageService.getAllLanguages();
-      if (allLanguagesResponse.success) {
-        setLanguages(allLanguagesResponse.data);
-      }
-
-      // Try to get user's languages if they're logged in
-      try {
-        const userLanguagesResponse = await languageService.getUserLanguages();
-        if (userLanguagesResponse.success) {
-          setUserLanguages(userLanguagesResponse.data);
-        }
-      } catch (error) {
-        console.log('User not logged in or no languages added');
+      setLoading(true);
+      const response = await api.get('/languages/list');
+      if (response.data.success) {
+        setLanguages(response.data.data);
+      } else {
+        Alert.alert('Error', 'Failed to fetch languages');
       }
     } catch (error) {
       console.error('Error fetching languages:', error);
+      Alert.alert('Error', 'Failed to load languages. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }
+  };
+
+  const handleLanguagePress = (language: Language) => {
+    router.push({
+      pathname: '/languages/[id]',
+      params: { id: language.id }
+    });
+  };
 
   const handleLanguageSelect = async (language: Language) => {
     try {
@@ -109,7 +109,7 @@ export default function LanguagesScreen() {
     );
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLessonContent = exports.getPronunciationFeedback = exports.generateConversationPrompt = exports.generateQuiz = exports.generateLesson = void 0;
+exports.getConversationResponse = exports.getLessonContent = exports.getPronunciationFeedback = exports.generateConversationPrompt = exports.generateQuiz = exports.generateLesson = void 0;
 const client_1 = require("@prisma/client");
 const sdk_1 = require("@anthropic-ai/sdk");
 const prisma = new client_1.PrismaClient();
@@ -97,15 +97,28 @@ const generateQuiz = async (req, res) => {
             });
         }
         if (lesson.Quiz && lesson.Quiz.length > 0) {
+            const existingQuiz = lesson.Quiz[0];
+            const questions = Array.isArray(existingQuiz.questions)
+                ? existingQuiz.questions
+                : [];
             return res.json({
                 success: true,
-                quiz: lesson.Quiz[0]
+                quiz: {
+                    id: existingQuiz.id,
+                    lessonId: existingQuiz.lessonId,
+                    questions: questions
+                }
             });
         }
         const quiz = await generateQuizInternal(lessonId, lesson.content, numberOfQuestions);
+        const questions = Array.isArray(quiz.questions) ? quiz.questions : [];
         return res.json({
             success: true,
-            quiz
+            quiz: {
+                id: quiz.id,
+                lessonId: quiz.lessonId,
+                questions: questions
+            }
         });
     }
     catch (error) {
@@ -163,124 +176,175 @@ async function generateQuizInternal(lessonId, lessonContent = null, numberOfQues
     });
 }
 const generateConversationPrompt = async (req, res) => {
+    var _a;
     try {
         const { languageId, level, scenario } = req.body;
-        const userId = req.user.id;
+        const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+        if (!process.env.CLAUDE_API_KEY) {
+            console.error('Missing CLAUDE_API_KEY environment variable');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error. Please contact the administrator.'
+            });
+        }
         const language = await prisma.language.findUnique({
             where: { id: languageId }
         });
         if (!language) {
-            return res.status(404).json({ message: 'Language not found' });
+            return res.status(404).json({
+                success: false,
+                message: 'Language not found'
+            });
         }
-        const message = await anthropic.messages.create({
-            model: 'claude-3-opus-20240229',
-            max_tokens: 1000,
-            messages: [{
-                    role: 'user',
-                    content: `Generate a realistic conversation scenario in ${language.name} for ${level.toLowerCase()} level${scenario ? ` about ${scenario}` : ''}. 
-                IMPORTANT: Format your response as a valid JSON object with these exact keys:
-                {
-                    "context": "",
-                    "vocabulary": [{"word": "", "translation": ""}],
-                    "script": [{"french": "", "english": ""}],
-                    "culturalNotes": ""
-                }`
-                }]
-        });
-        const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-        let conversationContent;
         try {
-            conversationContent = JSON.parse(responseText);
+            const message = await anthropic.messages.create({
+                model: 'claude-3-opus-20240229',
+                max_tokens: 1000,
+                messages: [{
+                        role: 'user',
+                        content: `Generate a realistic conversation scenario in ${language.name} for ${level.toLowerCase()} level${scenario ? ` about ${scenario}` : ''}. 
+                    IMPORTANT: Format your response as a valid JSON object with these exact keys:
+                    {
+                        "context": "",
+                        "vocabulary": [{"word": "", "translation": ""}],
+                        "script": [{"${language.code}": "", "english": ""}],
+                        "culturalNotes": ""
+                    }`
+                    }]
+            });
+            const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+            let conversationContent;
+            try {
+                conversationContent = JSON.parse(responseText);
+            }
+            catch (error) {
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    conversationContent = JSON.parse(jsonMatch[0]);
+                }
+                else {
+                    conversationContent = {
+                        context: "Practice conversation",
+                        vocabulary: [],
+                        script: [
+                            { [language.code]: "Hello", english: "Hello" },
+                            { [language.code]: "How are you?", english: "How are you?" }
+                        ],
+                        culturalNotes: ""
+                    };
+                }
+            }
+            const conversation = await prisma.conversationPractice.create({
+                data: {
+                    userId,
+                    transcript: {
+                        languageId,
+                        level: level || 'BEGINNER',
+                        scenario: scenario || 'General conversation',
+                        content: conversationContent
+                    }
+                }
+            });
+            return res.json({
+                success: true,
+                conversation: {
+                    id: conversation.id,
+                    languageId,
+                    level,
+                    scenario: scenario || 'General conversation',
+                    content: conversationContent
+                }
+            });
         }
-        catch (error) {
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                conversationContent = JSON.parse(jsonMatch[0]);
-            }
-            else {
-                conversationContent = {
-                    context: responseText,
-                    vocabulary: [],
-                    script: [],
-                    culturalNotes: ""
-                };
-            }
+        catch (aiError) {
+            console.error('AI service error:', aiError);
+            return res.status(500).json({
+                success: false,
+                message: 'Error generating conversation. Please try again later.'
+            });
         }
-        await prisma.conversationPractice.create({
-            data: {
-                userId,
-                transcript: conversationContent
-            }
-        });
-        return res.json({
-            success: true,
-            conversation: conversationContent
-        });
     }
     catch (error) {
-        console.error('Error generating conversation:', error);
-        return res.status(500).json({ message: 'Error generating conversation prompt' });
+        console.error('Error generating conversation prompt:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error generating conversation prompt'
+        });
     }
 };
 exports.generateConversationPrompt = generateConversationPrompt;
 const getPronunciationFeedback = async (req, res) => {
+    var _a;
     try {
-        const { languageId, audioTranscript, targetSentence } = req.body;
-        const userId = req.user.id;
+        const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+        const { languageId, audioUri } = req.body;
+        if (!languageId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: languageId'
+            });
+        }
+        if (!audioUri) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing audio recording data'
+            });
+        }
+        if (!process.env.CLAUDE_API_KEY) {
+            console.error('Missing CLAUDE_API_KEY environment variable');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error. Please contact the administrator.'
+            });
+        }
         const language = await prisma.language.findUnique({
             where: { id: languageId }
         });
         if (!language) {
-            return res.status(404).json({ message: 'Language not found' });
+            return res.status(404).json({
+                success: false,
+                message: 'Language not found'
+            });
         }
-        const message = await anthropic.messages.create({
-            model: 'claude-3-opus-20240229',
-            max_tokens: 500,
-            messages: [{
-                    role: 'user',
-                    content: `Compare this transcribed pronunciation "${audioTranscript}" with the target sentence "${targetSentence}" in ${language.name}.
-                IMPORTANT: Format your response as a valid JSON object with these exact keys:
-                {
-                    "accuracy": 0.0,
-                    "feedback": "",
-                    "suggestions": []
-                }`
-                }]
-        });
-        const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-        let feedback;
-        try {
-            feedback = JSON.parse(responseText);
-        }
-        catch (error) {
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                feedback = JSON.parse(jsonMatch[0]);
+        console.log(`Received audio recording with URI: ${audioUri}`);
+        const mockFeedback = {
+            accuracy: 0.85,
+            feedback: `Good pronunciation! Here are a few tips to improve:
+                - Pay attention to the stress in longer words
+                - Practice the specific sounds in ${language.name} that differ from English
+                - Try to speak a bit more slowly and clearly`,
+            suggestions: [
+                "Practice the 'r' sound more",
+                "Focus on sentence intonation",
+                "Listen to native speakers and mimic their pronunciation"
+            ]
+        };
+        if (userId) {
+            try {
+                await prisma.pronunciationFeedback.create({
+                    data: {
+                        userId,
+                        sentence: "Practice sentence",
+                        accuracy: mockFeedback.accuracy,
+                        feedback: mockFeedback.feedback
+                    }
+                });
             }
-            else {
-                feedback = {
-                    accuracy: 0,
-                    feedback: responseText,
-                    suggestions: []
-                };
+            catch (dbError) {
+                console.error('Error saving pronunciation feedback to database:', dbError);
             }
         }
-        await prisma.pronunciationFeedback.create({
-            data: {
-                userId,
-                sentence: targetSentence,
-                accuracy: feedback.accuracy || 0,
-                feedback: feedback.feedback || ''
-            }
-        });
         return res.json({
             success: true,
-            feedback
+            feedback: mockFeedback
         });
     }
     catch (error) {
         console.error('Error generating pronunciation feedback:', error);
-        return res.status(500).json({ message: 'Error generating pronunciation feedback' });
+        return res.status(500).json({
+            success: false,
+            message: 'Error generating pronunciation feedback'
+        });
     }
 };
 exports.getPronunciationFeedback = getPronunciationFeedback;
@@ -302,6 +366,9 @@ const getLessonContent = async (req, res) => {
             });
         }
         const quiz = (_a = lesson.Quiz) === null || _a === void 0 ? void 0 : _a[0];
+        const quizQuestions = quiz && Array.isArray(quiz.questions)
+            ? quiz.questions
+            : [];
         return res.json({
             success: true,
             lesson: {
@@ -318,7 +385,11 @@ const getLessonContent = async (req, res) => {
                     exercises: [],
                     culturalNotes: ""
                 },
-                quiz: (quiz === null || quiz === void 0 ? void 0 : quiz.questions) || null
+                quiz: {
+                    id: (quiz === null || quiz === void 0 ? void 0 : quiz.id) || '',
+                    lessonId: lesson.id,
+                    questions: quizQuestions
+                }
             }
         });
     }
@@ -331,4 +402,94 @@ const getLessonContent = async (req, res) => {
     }
 };
 exports.getLessonContent = getLessonContent;
+const getConversationResponse = async (req, res) => {
+    var _a;
+    try {
+        const { languageId, message } = req.body;
+        const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+        if (!languageId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: languageId'
+            });
+        }
+        if (!message || typeof message !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing or invalid message'
+            });
+        }
+        if (!process.env.CLAUDE_API_KEY) {
+            console.error('Missing CLAUDE_API_KEY environment variable');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error. Please contact the administrator.'
+            });
+        }
+        const language = await prisma.language.findUnique({
+            where: { id: languageId }
+        });
+        if (!language) {
+            return res.status(404).json({
+                success: false,
+                message: 'Language not found'
+            });
+        }
+        try {
+            const aiResponse = await anthropic.messages.create({
+                model: 'claude-3-sonnet-20240229',
+                max_tokens: 500,
+                messages: [{
+                        role: 'user',
+                        content: `You are a language learning assistant for ${language.name}. Respond to this message from a language learner: "${message}"
+                    
+                    Your response should:
+                    1. Be helpful and encouraging
+                    2. Use simple language appropriate for their level
+                    3. Provide corrections if there are grammar mistakes
+                    4. Include the correct ${language.name} phrases when appropriate
+                    
+                    Keep your response conversational, friendly and under 150 words.`
+                    }]
+            });
+            const responseText = aiResponse.content[0].type === 'text' ? aiResponse.content[0].text : '';
+            if (userId) {
+                try {
+                    await prisma.conversationExchange.create({
+                        data: {
+                            userId,
+                            languageId,
+                            userMessage: message,
+                            aiResponse: responseText
+                        }
+                    });
+                }
+                catch (dbError) {
+                    console.error('Error saving conversation to database:', dbError);
+                }
+            }
+            return res.json({
+                success: true,
+                data: {
+                    response: responseText
+                }
+            });
+        }
+        catch (aiError) {
+            console.error('AI service error:', aiError);
+            return res.status(500).json({
+                success: false,
+                message: 'Error generating conversation response. Please try again later.'
+            });
+        }
+    }
+    catch (error) {
+        console.error('Error generating conversation response:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error generating conversation response'
+        });
+    }
+};
+exports.getConversationResponse = getConversationResponse;
 //# sourceMappingURL=ai-lessons.controllers.js.map

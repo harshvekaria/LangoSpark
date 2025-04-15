@@ -37,6 +37,8 @@ interface PronunciationFeedback {
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const [languageName, setLanguageName] = useState('Conversation');
   const [prompt, setPrompt] = useState<ConversationPrompt | null>(null);
   const [loading, setLoading] = useState(true);
   const [userInput, setUserInput] = useState('');
@@ -58,6 +60,7 @@ export default function ConversationScreen() {
 
   useEffect(() => {
     generateConversationPrompt();
+    fetchLanguageName();
     return () => {
       if (sound) {
         sound.unloadAsync();
@@ -70,6 +73,17 @@ export default function ConversationScreen() {
       }
     };
   }, [id]);
+
+  const fetchLanguageName = async () => {
+    try {
+      const response = await api.get(`/languages/${id}`);
+      if (response.data && response.data.language) {
+        setLanguageName(response.data.language.name);
+      }
+    } catch (error) {
+      console.error('Error fetching language name:', error);
+    }
+  };
 
   const generateConversationPrompt = async () => {
     try {
@@ -449,7 +463,28 @@ export default function ConversationScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.conversationContainer}>
+      <LinearGradient
+        colors={colorScheme === 'dark' 
+          ? [colors.tint, '#0f7433', colors.background] 
+          : [colors.tint, '#0f7433', '#f5f5f5']
+        }
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={styles.backButton}
+          >
+            <FontAwesome name="arrow-left" size={20} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{languageName}</Text>
+          <View style={styles.rightPlaceholder} />
+        </View>
+      </LinearGradient>
+      <ScrollView 
+        style={[styles.conversationContainer, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.contentContainer}
+      >
         {prompt && (
           <>
             <View style={[styles.contextContainer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -606,15 +641,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    marginHorizontal: 8,
+  },
+  rightPlaceholder: {
+    width: 36,
+    height: 36,
+  },
   conversationContainer: {
     flex: 1,
     padding: 16,
+    marginTop: -20, // Overlap with gradient
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  contentContainer: {
+    paddingBottom: 20,
   },
   contextContainer: {
     marginBottom: 20,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   contextTitle: {
     fontSize: 18,
@@ -630,6 +701,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   vocabularyTitle: {
     fontSize: 18,
@@ -658,6 +734,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 12,
     maxWidth: '85%',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
   },
   userMessage: {
     alignSelf: 'flex-end',
@@ -771,7 +852,11 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
   recordingButton: {
     width: 44,
@@ -790,6 +875,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   scriptTitle: {
     fontSize: 18,
@@ -803,7 +893,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12,
     borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.02)',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   scriptTextContainer: {
     flex: 1,

@@ -1,9 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, Redirect, Slot } from 'expo-router';
+import { Stack, Redirect } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import React from 'react';
 import 'react-native-reanimated';
 import { AuthProvider } from '../contexts/AuthContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,14 +29,26 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack 
+        screenOptions={{ 
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      >
         {!user ? (
           <Stack.Screen name="auth/login" options={{ headerShown: false }} />
         ) : (
-          <Stack.Screen name="(tabs)" />
+          <>
+            <Stack.Screen 
+              name="(tabs)" 
+              options={{
+                headerShown: false,
+              }}
+            />
+          </>
         )}
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }

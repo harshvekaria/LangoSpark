@@ -140,8 +140,8 @@ export default function HomeScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
           <View style={styles.actionButtonsRow}>
             <SpotifyButton 
-              title="Explore Languages" 
-              onPress={() => router.push('/explore')}
+              title="Start Practice" 
+              onPress={() => router.push('/languages')}
               style={styles.actionButton}
             />
             <SpotifyButton 

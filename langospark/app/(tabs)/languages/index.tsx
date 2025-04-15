@@ -129,7 +129,7 @@ export default function LanguagesScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Languages</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Practice</Text>
       </View>
       
       {userLanguages.length > 0 && (
@@ -147,7 +147,7 @@ export default function LanguagesScreen() {
       )}
       
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>All Languages</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Available Languages</Text>
         <FlatList
           data={languages}
           renderItem={renderLanguageItem}

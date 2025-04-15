@@ -18,6 +18,7 @@ import { Colors } from '../../../../../../constants/Colors';
 import { useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SpotifyButton } from '../../../../../../components/ui/SpotifyButton';
+import { progressService } from '../../../../../../services/endpointService';
 
 interface Question {
   question: string;
@@ -172,13 +173,43 @@ export default function QuizScreen() {
     if (!quiz || !quiz.questions || quiz.questions.length === 0) return;
     
     const percentage = (score / quiz.questions.length) * 100;
+    const roundedScore = Math.round(percentage);
+    const lessonIdString = Array.isArray(lessonId) ? lessonId[0] : lessonId;
     
     try {
-      await api.post('/progress/lesson', {
-        lessonId,
-        score: Math.round(percentage),
-        completed: true
-      });
+      console.log(`Submitting quiz result for lesson ${lessonIdString}: score=${roundedScore}, completed=true`);
+      
+      // First try using the service
+      try {
+        const response = await progressService.updateLessonProgress({
+          lessonId: lessonIdString,
+          score: roundedScore,
+          completed: true
+        });
+        
+        console.log('Progress update response:', response);
+        
+        if (!response.success) {
+          throw new Error('Progress update via service failed');
+        }
+      } catch (serviceError) {
+        console.error('Error updating progress via service:', serviceError);
+        
+        // Fallback to direct API call
+        console.log('Falling back to direct API call...');
+        const directResponse = await api.post('/progress/lesson', {
+          lessonId: lessonIdString,
+          score: roundedScore,
+          completed: true
+        });
+        
+        console.log('Direct API response:', directResponse.data);
+        
+        // If this also fails, throw an error
+        if (!directResponse.data.success) {
+          throw new Error('Direct progress update also failed');
+        }
+      }
       
       setQuizCompleted(true);
       
@@ -188,11 +219,23 @@ export default function QuizScreen() {
       }
     } catch (error) {
       console.error('Error submitting quiz:', error);
+      Alert.alert(
+        'Progress Update Error',
+        'There was an issue saving your progress. Your score may not be reflected in your profile.'
+      );
+      
+      // Still mark as completed in the UI
+      setQuizCompleted(true);
     }
   };
   
   const returnToLesson = () => {
     router.back();
+  };
+  
+  const returnToDashboard = () => {
+    // Navigate back to dashboard to see updated progress
+    router.push('/');
   };
   
   if (loading) {
@@ -293,11 +336,11 @@ export default function QuizScreen() {
             />
             
             <SpotifyButton
-              title="Back to Lesson"
+              title="Continue Learning"
               variant="primary"
               size="large"
               style={styles.resultButton}
-              onPress={returnToLesson}
+              onPress={returnToDashboard}
             />
           </View>
         </View>

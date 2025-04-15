@@ -42,6 +42,9 @@ interface PronunciationFeedback {
 export const generateLesson = async (req: Request, res: Response) => {
     try {
         const { languageId, level, topic } = req.body as LessonRequest;
+        const userId = (req as any).user.id; // Get the authenticated user's ID
+        
+        console.log(`Generating lesson for user ${userId}, language ${languageId}, level ${level}`);
 
         // Get language details
         const language = await prisma.language.findUnique({
@@ -109,15 +112,36 @@ export const generateLesson = async (req: Request, res: Response) => {
                 content: lessonContent
             }
         });
+        
+        console.log(`Lesson created with ID: ${lesson.id}`);
 
         // Create quiz for the lesson
         await generateQuizInternal(lesson.id, lessonContent);
+        
+        // Create an initial progress record for this user and lesson
+        const progress = await prisma.learningProgress.create({
+            data: {
+                userId,
+                lessonId: lesson.id,
+                score: 0,
+                completed: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }
+        });
+        
+        console.log(`Initial progress record created for lesson ${lesson.id}, user ${userId}`);
 
         return res.json({
             success: true,
             lesson: {
                 ...lesson,
                 content: lessonContent
+            },
+            progress: {
+                id: progress.id,
+                completed: progress.completed,
+                score: progress.score
             }
         });
     } catch (error) {

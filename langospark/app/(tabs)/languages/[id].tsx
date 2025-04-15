@@ -43,28 +43,148 @@ export default function LanguageDetailScreen() {
   const fetchLanguageDetails = async () => {
     try {
       setLoading(true);
+      console.log(`Fetching language details for ID: ${id}`);
+      
       // Get language details
-      const languageResponse = await api.get(`/languages/${id}`);
-      if (languageResponse.data.success) {
-        setLanguage(languageResponse.data.data);
-      } else {
-        Alert.alert('Error', 'Language not found');
-        return;
+      try {
+        const languageResponse = await api.get(`/languages/${id}`);
+        console.log('Language response:', languageResponse.data);
+        
+        if (languageResponse.data && languageResponse.data.success) {
+          setLanguage(languageResponse.data.data);
+          console.log('Language data set successfully:', languageResponse.data.data);
+        } else {
+          console.error('Language API returned unsuccessful response:', languageResponse.data);
+          Alert.alert('Error', 'Language not found');
+          return;
+        }
+      } catch (langError) {
+        console.error('Error fetching language details:', langError);
+        // Try alternative API endpoint
+        try {
+          console.log('Trying alternative language endpoint...');
+          const altResponse = await api.get(`/language/${id}`);
+          if (altResponse.data && altResponse.data.success) {
+            setLanguage(altResponse.data.data);
+            console.log('Alternative language endpoint succeeded:', altResponse.data.data);
+          } else {
+            throw new Error('Alternative endpoint also failed');
+          }
+        } catch (altError) {
+          console.error('Alternative language endpoint failed:', altError);
+          Alert.alert('Error', 'Language not found. Please try again.');
+          return;
+        }
       }
 
       // Get lessons for this language
-      const lessonsResponse = await api.get(`/languages/${id}/lessons`);
-      if (lessonsResponse.data.success) {
-        setLessons(lessonsResponse.data.data);
-      }
+      await fetchLanguageProgress();
     } catch (error) {
-      console.error('Error fetching language details:', error);
+      console.error('Error in fetchLanguageDetails:', error);
       Alert.alert(
         'Error',
         'Failed to load language details. Please try again.'
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to fetch lesson progress data
+  const fetchLanguageProgress = async () => {
+    try {
+      console.log(`Fetching lessons and progress for language: ${id}`);
+      
+      try {
+        const progressResponse = await api.get(`/progress/language/${id}`);
+        
+        if (progressResponse.data && progressResponse.data.success) {
+          console.log(`Received ${progressResponse.data.data.length} lessons with progress data`);
+          
+          // Map the response to our Lesson interface
+          const lessonsWithProgress = progressResponse.data.data.map((item: any) => ({
+            id: item.lesson.id,
+            title: item.lesson.title,
+            description: item.lesson.description,
+            level: item.lesson.level,
+            progress: item.progress
+          }));
+          
+          setLessons(lessonsWithProgress);
+          console.log('Lessons with progress set successfully');
+        } else {
+          console.error('Failed to fetch progress data:', progressResponse.data);
+          // Try to get lessons without progress as fallback
+          await fetchLessonsWithoutProgress();
+        }
+      } catch (progressError) {
+        console.error('Error fetching language progress from primary endpoint:', progressError);
+        // Try alternative endpoint for progress
+        try {
+          console.log('Trying alternative progress endpoint...');
+          const altProgressResponse = await api.get(`/language/${id}/lessons`);
+          
+          if (altProgressResponse.data && altProgressResponse.data.success) {
+            console.log(`Alternative endpoint returned ${altProgressResponse.data.data.length} lessons`);
+            
+            // Map the response to our Lesson interface with default progress
+            const lessonsFromAlt = altProgressResponse.data.data.map((lesson: any) => ({
+              id: lesson.id,
+              title: lesson.title,
+              description: lesson.description,
+              level: lesson.level,
+              progress: {
+                completed: false,
+                score: 0
+              }
+            }));
+            
+            setLessons(lessonsFromAlt);
+            console.log('Lessons set from alternative endpoint');
+          } else {
+            throw new Error('Alternative progress endpoint also failed');
+          }
+        } catch (altProgressError) {
+          console.error('Alternative progress endpoint failed:', altProgressError);
+          // Last resort: Try to get lessons without progress
+          await fetchLessonsWithoutProgress();
+        }
+      }
+    } catch (error) {
+      console.error('Error in fetchLanguageProgress:', error);
+    }
+  };
+  
+  // Fallback function to get lessons without progress
+  const fetchLessonsWithoutProgress = async () => {
+    try {
+      console.log('Attempting to fetch lessons without progress...');
+      const lessonsResponse = await api.get(`/ai-lessons/lessons/${id}`);
+      
+      if (lessonsResponse.data && lessonsResponse.data.success && lessonsResponse.data.data) {
+        console.log(`Retrieved ${lessonsResponse.data.data.length} lessons without progress data`);
+        
+        // Add default progress to lessons
+        const lessonsWithDefaultProgress = lessonsResponse.data.data.map((lesson: any) => ({
+          id: lesson.id,
+          title: lesson.title,
+          description: lesson.description,
+          level: lesson.level || 'BEGINNER',
+          progress: {
+            completed: false,
+            score: 0
+          }
+        }));
+        
+        setLessons(lessonsWithDefaultProgress);
+        console.log('Lessons with default progress set successfully');
+      } else {
+        console.error('Failed to fetch lessons without progress:', lessonsResponse?.data);
+        setLessons([]);
+      }
+    } catch (error) {
+      console.error('Error fetching lessons without progress:', error);
+      setLessons([]);
     }
   };
 
@@ -88,18 +208,23 @@ export default function LanguageDetailScreen() {
       console.log('Lesson generation response:', response.data);
 
       if (response.data.success) {
-        // Add the new lesson to the lessons list
+        // Add the new lesson to the lessons list with progress information
         const newLesson = {
           id: response.data.lesson.id,
           title: response.data.lesson.title,
           description: response.data.lesson.description,
           level: response.data.lesson.level,
-          progress: {
+          progress: response.data.progress || {
             completed: false,
             score: 0
           }
         };
+        
+        console.log('Adding new lesson with progress data:', newLesson);
         setLessons(prevLessons => [...prevLessons, newLesson]);
+        
+        // Refresh progress data
+        fetchLanguageProgress();
         
         Alert.alert(
           'Success',
@@ -126,24 +251,7 @@ export default function LanguageDetailScreen() {
       }
     } catch (error: any) {
       console.error('Error generating lesson:', error);
-      console.error('Error response:', error.response?.data);
-      
-      if (error.code === 'ECONNABORTED') {
-        Alert.alert(
-          'Timeout',
-          'The lesson generation is taking longer than expected. Please check if the server is running and try again.'
-        );
-      } else if (error.response?.status === 401) {
-        Alert.alert(
-          'Authentication Error',
-          'Please log in again to continue.'
-        );
-      } else {
-        Alert.alert(
-          'Error',
-          error.response?.data?.message || 'Failed to generate lesson. Please try again.'
-        );
-      }
+      Alert.alert('Error', error.response?.data?.message || 'Failed to generate lesson. Please try again.');
     } finally {
       setLoading(false);
     }

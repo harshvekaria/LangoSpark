@@ -30,6 +30,11 @@ export const languageService = {
     return response.data;
   },
   
+  getMyLanguages: async () => {
+    const response = await api.get('/languages/my-languages');
+    return response.data;
+  },
+  
   updateLanguageLevel: async (data: { languageId: string; level: string }) => {
     const response = await api.put('/language/level', data);
     return response.data;

@@ -10,6 +10,8 @@ const anthropic = new sdk_1.Anthropic({
 const generateLesson = async (req, res) => {
     try {
         const { languageId, level, topic } = req.body;
+        const userId = req.user.id;
+        console.log(`Generating lesson for user ${userId}, language ${languageId}, level ${level}`);
         const language = await prisma.language.findUnique({
             where: { id: languageId }
         });
@@ -68,10 +70,27 @@ const generateLesson = async (req, res) => {
                 content: lessonContent
             }
         });
+        console.log(`Lesson created with ID: ${lesson.id}`);
         await generateQuizInternal(lesson.id, lessonContent);
+        const progress = await prisma.learningProgress.create({
+            data: {
+                userId,
+                lessonId: lesson.id,
+                score: 0,
+                completed: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }
+        });
+        console.log(`Initial progress record created for lesson ${lesson.id}, user ${userId}`);
         return res.json({
             success: true,
-            lesson: Object.assign(Object.assign({}, lesson), { content: lessonContent })
+            lesson: Object.assign(Object.assign({}, lesson), { content: lessonContent }),
+            progress: {
+                id: progress.id,
+                completed: progress.completed,
+                score: progress.score
+            }
         });
     }
     catch (error) {

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useColorScheme } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { SpotifyCard } from '../../components/ui/SpotifyCard';
 import { SpotifyButton } from '../../components/ui/SpotifyButton';
-import { progressService } from '../../services/endpointService';
+import { progressService, languageService } from '../../services/endpointService';
 
 interface LanguageProgress {
   language: {
@@ -23,6 +23,13 @@ interface LanguageProgress {
   };
 }
 
+interface MyLanguage {
+  id: string;
+  name: string;
+  code?: string;
+  level?: string;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -35,14 +42,105 @@ export default function HomeScreen() {
     fetchUserLanguages();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Dashboard screen is focused, refreshing data...');
+      fetchUserLanguages();
+      return () => {
+        console.log('Dashboard screen lost focus');
+      };
+    }, [])
+  );
+
   const fetchUserLanguages = async () => {
     try {
-      const response = await progressService.getDashboard();
-      if (response.success) {
-        setLanguages(response.data);
+      setLoading(true);
+      
+      let combinedLanguages: LanguageProgress[] = [];
+      
+      try {
+        // Get progress data from dashboard
+        const progressResponse = await progressService.getDashboard();
+        
+        if (progressResponse && progressResponse.success && progressResponse.data) {
+          combinedLanguages = [...progressResponse.data];
+          console.log('Dashboard data loaded:', combinedLanguages.length, 'languages');
+        } else {
+          console.warn('Dashboard API returned unsuccessful response:', progressResponse);
+        }
+      } catch (progressError) {
+        console.error('Error fetching dashboard data:', progressError);
       }
+      
+      try {
+        // Get languages data from the my-languages endpoint
+        const myLanguagesResponse = await languageService.getMyLanguages();
+        
+        if (myLanguagesResponse && myLanguagesResponse.success && myLanguagesResponse.data) {
+          console.log('My-languages API returned:', myLanguagesResponse.data.length, 'languages');
+          
+          // Create a map of existing language IDs for easy lookup
+          const existingLanguageIds = new Set(combinedLanguages.map((lang: LanguageProgress) => lang.language.id));
+          
+          // Add languages from my-languages that aren't already in the dashboard data
+          myLanguagesResponse.data.forEach((myLang: MyLanguage) => {
+            if (!existingLanguageIds.has(myLang.id)) {
+              // Add with default progress values
+              combinedLanguages.push({
+                language: {
+                  id: myLang.id,
+                  name: myLang.name
+                },
+                level: myLang.level || 'BEGINNER',
+                progress: {
+                  totalLessons: 0,
+                  completedLessons: 0,
+                  completionRate: 0,
+                  averageScore: 0
+                }
+              });
+            }
+          });
+          
+          console.log('Combined languages count:', combinedLanguages.length);
+        } else {
+          console.warn('My-languages API returned unsuccessful response:', myLanguagesResponse);
+        }
+      } catch (myLangError) {
+        console.error('Error fetching my-languages data:', myLangError);
+      }
+      
+      // If we still don't have any languages, try the legacy API as fallback
+      if (combinedLanguages.length === 0) {
+        try {
+          const legacyResponse = await languageService.getUserLanguages();
+          
+          if (legacyResponse && legacyResponse.success && legacyResponse.data) {
+            console.log('Legacy API returned:', legacyResponse.data.length, 'languages');
+            
+            // Map the legacy response to our expected format
+            combinedLanguages = legacyResponse.data.map((lang: any) => ({
+              language: {
+                id: lang.id,
+                name: lang.name
+              },
+              level: lang.level || 'BEGINNER',
+              progress: {
+                totalLessons: lang.totalLessons || 0,
+                completedLessons: lang.completedLessons || 0,
+                completionRate: lang.completionRate || 0,
+                averageScore: lang.averageScore || 0
+              }
+            }));
+          }
+        } catch (legacyError) {
+          console.error('Error fetching legacy user languages:', legacyError);
+        }
+      }
+      
+      setLanguages(combinedLanguages);
     } catch (error) {
-      console.error('Error fetching user languages:', error);
+      console.error('Error in fetchUserLanguages:', error);
     } finally {
       setLoading(false);
     }

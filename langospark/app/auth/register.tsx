@@ -37,10 +37,15 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
+      console.log('Attempting to register with:', { fullName, email });
       await register(fullName, email, password);
-      // Navigation is handled by auth context
-    } catch (error) {
-      // Error is already handled by the AuthContext
+      console.log('Registration successful');
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      Alert.alert(
+        'Registration Failed',
+        error.response?.data?.message || error.message || 'An error occurred during registration'
+      );
     } finally {
       setIsLoading(false);
     }

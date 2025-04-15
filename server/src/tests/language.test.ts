@@ -14,20 +14,22 @@ describe('Language Routes', () => {
     const userData = {
       email: 'language-test@example.com',
       password: 'password123',
-      name: 'Language Test User'
+      fullName: 'Language Test User'
     };
 
     const response = await request
       .post('/api/auth/register')
       .send(userData);
 
-    authToken = response.body.token;
-    testUserId = response.body.user.id;
+    authToken = response.body.data.token;
+    testUserId = response.body.data.user.id;
   });
 
   afterAll(async () => {
     // Cleanup test data
-    await prisma.userLanguage.deleteMany();
+    await prisma.userLanguage.deleteMany({
+      where: { userId: testUserId }
+    });
     await prisma.user.deleteMany({
       where: { email: 'language-test@example.com' }
     });

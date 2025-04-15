@@ -14,15 +14,15 @@ describe('Progress Routes', () => {
     const userData = {
       email: 'progress-test@example.com',
       password: 'password123',
-      name: 'Progress Test User'
+      fullName: 'Progress Test User'
     };
 
     const userResponse = await request
       .post('/api/auth/register')
       .send(userData);
 
-    authToken = userResponse.body.token;
-    testUserId = userResponse.body.user.id;
+    authToken = userResponse.body.data.token;
+    testUserId = userResponse.body.data.user.id;
 
     // Add a language to user
     const languageData = {
@@ -38,40 +38,63 @@ describe('Progress Routes', () => {
 
     testLanguageId = langResponse.body.data.languageId;
 
-    // Create a lesson for testing progress
-    const lesson = await prisma.lesson.create({
-      data: {
-        title: 'Test Lesson for Progress',
-        description: 'A lesson for testing progress',
-        languageId: testLanguageId,
-        level: 'BEGINNER' as Level,
-        content: JSON.stringify({
-          words: ['bonjour', 'merci', 'au revoir'],
-          translations: ['hello', 'thank you', 'goodbye']
-        })
-      }
+    // Find or create a lesson for testing progress
+    const existingLessons = await prisma.lesson.findMany({
+      where: { languageId: testLanguageId, level: 'BEGINNER' },
+      take: 1
     });
 
-    testLessonId = lesson.id;
+    if (existingLessons.length > 0) {
+      testLessonId = existingLessons[0].id;
+    } else {
+      // Create a lesson for testing progress
+      const lesson = await prisma.lesson.create({
+        data: {
+          title: 'Test Lesson for Progress',
+          description: 'A lesson for testing progress',
+          languageId: testLanguageId,
+          level: 'BEGINNER',
+          content: JSON.stringify({
+            words: ['bonjour', 'merci', 'au revoir'],
+            translations: ['hello', 'thank you', 'goodbye']
+          })
+        }
+      });
+
+      testLessonId = lesson.id;
+    }
   });
 
   afterAll(async () => {
-    // Cleanup test data
-    await prisma.progress.deleteMany({
-      where: { userId: testUserId }
-    });
-    await prisma.learningProgress.deleteMany({
-      where: { userId: testUserId }
-    });
-    await prisma.lesson.deleteMany({
-      where: { id: testLessonId }
-    });
-    await prisma.userLanguage.deleteMany({
-      where: { userId: testUserId }
-    });
-    await prisma.user.deleteMany({
-      where: { id: testUserId }
-    });
+    // Cleanup test data - order matters for foreign key constraints
+    
+    // First delete progress records
+    if (testUserId) {
+      await prisma.learningProgress.deleteMany({
+        where: { userId: testUserId }
+      });
+      
+      await prisma.progress.deleteMany({
+        where: { userId: testUserId }
+      });
+    }
+    
+    // Delete user language associations
+    if (testUserId) {
+      await prisma.userLanguage.deleteMany({
+        where: { userId: testUserId }
+      });
+    }
+    
+    // Delete user
+    if (testUserId) {
+      await prisma.user.deleteMany({
+        where: { id: testUserId }
+      });
+    }
+    
+    // We don't delete lessons created for tests to avoid foreign key constraints
+    // They will be reused in future tests
   });
 
   describe('GET /api/progress/dashboard', () => {

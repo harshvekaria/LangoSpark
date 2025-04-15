@@ -1,5 +1,4 @@
 import { prisma, request } from './setup';
-import { Level } from '@prisma/client';
 
 describe('AI Lessons Routes', () => {
   let authToken: string;
@@ -12,15 +11,15 @@ describe('AI Lessons Routes', () => {
     const userData = {
       email: 'ai-test@example.com',
       password: 'password123',
-      name: 'AI Test User'
+      fullName: 'AI Test User'
     };
 
     const userResponse = await request
       .post('/api/auth/register')
       .send(userData);
 
-    authToken = userResponse.body.token;
-    testUserId = userResponse.body.user.id;
+    authToken = userResponse.body.data.token;
+    testUserId = userResponse.body.data.user.id;
 
     // Add a language to user
     const languageData = {
@@ -35,23 +34,40 @@ describe('AI Lessons Routes', () => {
       .send(languageData);
 
     testLanguageId = langResponse.body.data.languageId;
+    
+    // Find an existing lesson or we'll create one during tests
+    const existingLessons = await prisma.lesson.findMany({
+      where: { languageId: testLanguageId, level: 'BEGINNER' },
+      take: 1
+    });
+    
+    if (existingLessons.length > 0) {
+      testLessonId = existingLessons[0].id;
+    }
   });
 
   afterAll(async () => {
-    // Cleanup test data
-    if (testLessonId) {
-      await prisma.lesson.deleteMany({
-        where: { id: testLessonId }
+    // Cleanup test data in proper order for foreign key constraints
+    if (testUserId) {
+      // First remove any user progress
+      await prisma.learningProgress.deleteMany({
+        where: { userId: testUserId }
+      });
+      
+      await prisma.progress.deleteMany({
+        where: { userId: testUserId }
+      });
+      
+      // Then user languages
+      await prisma.userLanguage.deleteMany({
+        where: { userId: testUserId }
+      });
+      
+      // Finally delete the user
+      await prisma.user.deleteMany({
+        where: { id: testUserId }
       });
     }
-    
-    await prisma.userLanguage.deleteMany({
-      where: { userId: testUserId }
-    });
-    
-    await prisma.user.deleteMany({
-      where: { id: testUserId }
-    });
   });
 
   describe('POST /api/ai-lessons/generate-lesson', () => {
@@ -73,8 +89,10 @@ describe('AI Lessons Routes', () => {
       expect(response.body.data).toHaveProperty('title');
       expect(response.body.data).toHaveProperty('content');
       
-      // Save lesson ID for future tests
-      testLessonId = response.body.data.id;
+      // Save lesson ID for future tests (if we don't already have one)
+      if (!testLessonId) {
+        testLessonId = response.body.data.id;
+      }
     }, 15000); // Increase timeout for AI generation
 
     it('should reject unauthenticated requests', async () => {
@@ -94,7 +112,7 @@ describe('AI Lessons Routes', () => {
 
   describe('GET /api/ai-lessons/lesson/:lessonId', () => {
     it('should retrieve lesson content', async () => {
-      // This test depends on the previous test creating a lesson
+      // This test depends on having a lesson ID (either existing or created)
       if (!testLessonId) {
         throw new Error('Test lesson ID not available');
       }

@@ -1,5 +1,4 @@
 import { prisma, request } from './setup';
-import { Level } from '@prisma/client';
 
 describe('Progress Routes', () => {
   let authToken: string;

@@ -132,10 +132,7 @@ describe('Validation Middleware', () => {
     // If your backend sanitizes input, the script should not be stored as-is
     if (response.status === 201) {
       const userId = response.body.data.user.id;
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
-
+      
       // Clean up
       await prisma.user.delete({
         where: { id: userId }

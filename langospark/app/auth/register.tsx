@@ -5,6 +5,7 @@ import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors } from '../../constants/Colors';
 import { useColorScheme } from 'react-native';
+import { LogoSvg } from '../../components/LogoSvg';
 
 export default function RegisterScreen() {
   const [fullName, setFullName] = useState('');
@@ -37,10 +38,15 @@ export default function RegisterScreen() {
 
     setIsLoading(true);
     try {
+      console.log('Attempting to register with:', { fullName, email });
       await register(fullName, email, password);
-      // Navigation is handled by auth context
-    } catch (error) {
-      // Error is already handled by the AuthContext
+      console.log('Registration successful');
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      Alert.alert(
+        'Registration Failed',
+        error.response?.data?.message || error.message || 'An error occurred during registration'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -51,6 +57,10 @@ export default function RegisterScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
     >
+      <View style={styles.logoContainer}>
+        <LogoSvg width={160} height={80} color={colors.tint} />
+      </View>
+      
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
         <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
@@ -161,7 +171,11 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingTop: 60,
+    paddingTop: 50,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
   },
   header: {
     marginBottom: 30,

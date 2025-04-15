@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, getToken } from './api';
 
 // User profile
 export const userService = {
@@ -81,13 +81,110 @@ export const lessonService = {
     return response.data;
   },
   
-  getPronunciationFeedback: async (data: { 
+  getPronunciationFeedback: async (data: {
     languageId: string; 
-    level: string; 
-    recordingUrl: string; 
-    targetText: string 
+    audioData: string; 
+    targetText: string;
+    level: string;
   }) => {
-    const response = await api.post('/ai-lessons/pronunciation-feedback', data);
-    return response.data;
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      // Validate input data
+      if (!data.languageId || !data.audioData || !data.targetText || !data.level) {
+        throw new Error('Missing required parameters for pronunciation feedback');
+      }
+
+      // Log data for debugging (excluding audio data for brevity)
+      console.log('Sending pronunciation feedback request:', {
+        languageId: data.languageId,
+        targetText: data.targetText,
+        level: data.level,
+        audioDataLength: data.audioData.length
+      });
+
+      // Process and optimize audio data
+      let processedAudioData = data.audioData;
+      
+      // Handle different audio data formats
+      if (data.audioData.startsWith('data:audio')) {
+        // Remove data URL prefix if present
+        processedAudioData = data.audioData.split(',')[1];
+      } else if (data.audioData.startsWith('data:application/octet-stream')) {
+        // Handle base64 encoded audio
+        processedAudioData = data.audioData.split(',')[1];
+      }
+
+      // Validate processed audio data
+      if (!processedAudioData || processedAudioData.length < 100) {
+        throw new Error('Invalid audio data format or size');
+      }
+
+      // Check if audio data is too large (more than 10MB)
+      if (processedAudioData.length > 10 * 1024 * 1024) {
+        console.log('Audio data too large, reducing quality');
+        // Audio data is too large, we'll need to reduce the data
+        throw new Error('Audio data too large. Please try recording a shorter phrase or use a lower quality setting.');
+      }
+
+      const requestData = {
+        languageId: data.languageId,
+        audioData: processedAudioData,
+        targetText: data.targetText,
+        level: data.level
+      };
+
+      const response = await api.post('/ai-lessons/pronunciation-feedback', requestData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        maxContentLength: 50 * 1024 * 1024, // 50MB max content length
+        maxBodyLength: 50 * 1024 * 1024, // 50MB max body length
+        timeout: 60000 // 60 second timeout
+      });
+
+      console.log('Pronunciation feedback response:', {
+        success: response.data.success,
+        status: response.status,
+        hasData: !!response.data.feedback
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to get pronunciation feedback');
+      }
+
+      // Validate response data structure
+      const feedback = response.data.feedback;
+      if (!feedback || typeof feedback.accuracy !== 'number' || !feedback.feedback || !Array.isArray(feedback.suggestions)) {
+        throw new Error('Invalid feedback data structure received from server');
+      }
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Pronunciation feedback error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
+      // Provide more specific error messages
+      if (error.response?.status === 401) {
+        throw new Error('Please log in to use the pronunciation feature');
+      } else if (error.response?.status === 413) {
+        throw new Error('Audio file too large. Please try a shorter recording (less than 10 seconds)');
+      } else if (error.message.includes('timeout')) {
+        throw new Error('Request timed out. Please try recording a shorter phrase.');
+      } else if (error.message.includes('Audio data too large')) {
+        throw new Error('Audio file too large. Please try a shorter recording (less than 10 seconds)');
+      } else if (error.message.includes('Invalid audio data')) {
+        throw new Error('Invalid audio format. Please try recording again');
+      } else {
+        throw new Error(error.message || 'Failed to analyze pronunciation. Please try again.');
+      }
+    }
   }
 }; 

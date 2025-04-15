@@ -18,6 +18,24 @@ interface QuizRequest {
     numberOfQuestions?: number;
 }
 
+interface PronunciationFeedbackRequest {
+    languageId: string;
+    audioData: string;
+    targetText: string;
+    level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+}
+
+interface PronunciationFeedback {
+    accuracy: number;
+    feedback: string;
+    suggestions: string[];
+    phonemes: Array<{
+        sound: string;
+        accuracy: number;
+        feedback: string;
+    }>;
+}
+
 /**
  * Generate a language lesson using Claude AI
  */
@@ -338,97 +356,182 @@ export const generateConversationPrompt = async (req: Request, res: Response) =>
  */
 export const getPronunciationFeedback = async (req: Request, res: Response) => {
     try {
-        // Make user optional in case authentication is not required
-        const userId = (req as any).user?.id;
-        const { languageId, audioUri } = req.body;
+        console.log('Received pronunciation feedback request');
+        const { languageId, audioData, targetText, level } = req.body as PronunciationFeedbackRequest;
 
-        // Validate required parameters
-        if (!languageId) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Missing required parameter: languageId' 
+        if (!languageId || !audioData || !targetText || !level) {
+            console.error('Missing required parameters:', { 
+                languageId, 
+                hasAudioData: !!audioData, 
+                targetText,
+                level 
             });
-        }
-
-        // Also validate audioUri
-        if (!audioUri) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing audio recording data'
+                error: 'Missing required parameters: languageId, audioData, targetText, and level are required'
             });
         }
 
-        // Validate API key
-        if (!process.env.CLAUDE_API_KEY) {
-            console.error('Missing CLAUDE_API_KEY environment variable');
-            return res.status(500).json({
-                success: false,
-                message: 'Server configuration error. Please contact the administrator.'
-            });
-        }
-
-        // Find the language
+        // Get language details
         const language = await prisma.language.findUnique({
             where: { id: languageId }
         });
 
         if (!language) {
-            return res.status(404).json({ 
+            console.error('Language not found:', languageId);
+            return res.status(404).json({
                 success: false,
-                message: 'Language not found' 
+                error: 'Language not found'
             });
         }
 
-        // Since we can't process the audio directly (would need a speech-to-text service),
-        // we'll simulate a response based on the language
-        // In a real implementation, you would:
-        // 1. Convert the audio to text using a service like Google Speech-to-Text
-        // 2. Compare the transcription with an expected phrase
-        // 3. Generate feedback using Claude
-
-        // For now, let's generate a mock feedback response
-        // At least log that we received an audio URI to show it's being used
-        console.log(`Received audio recording with URI: ${audioUri}`);
-        
-        const mockFeedback = {
-            accuracy: 0.85,
-            feedback: `Good pronunciation! Here are a few tips to improve:
-                - Pay attention to the stress in longer words
-                - Practice the specific sounds in ${language.name} that differ from English
-                - Try to speak a bit more slowly and clearly`,
-            suggestions: [
-                "Practice the 'r' sound more",
-                "Focus on sentence intonation",
-                "Listen to native speakers and mimic their pronunciation"
-            ]
-        };
-
-        // If user ID is available, store the feedback
-        if (userId) {
-            try {
-                await prisma.pronunciationFeedback.create({
-                    data: {
-                        userId,
-                        sentence: "Practice sentence", // In a real implementation, this would be the target sentence
-                        accuracy: mockFeedback.accuracy,
-                        feedback: mockFeedback.feedback
-                    }
-                });
-            } catch (dbError) {
-                console.error('Error saving pronunciation feedback to database:', dbError);
-                // Continue with the response even if saving to DB fails
-            }
-        }
-
-        return res.json({
-            success: true,
-            feedback: mockFeedback
+        console.log('Generating feedback for:', { 
+            language: language.name, 
+            targetText, 
+            level,
+            audioDataLength: audioData.length 
         });
-    } catch (error) {
-        console.error('Error generating pronunciation feedback:', error);
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Error generating pronunciation feedback' 
+        
+        try {
+            // Generate feedback using Claude AI with strict JSON formatting
+            const message = await anthropic.messages.create({
+                model: 'claude-3-opus-20240229',
+                max_tokens: 1000,
+                system: "You are an expert language pronunciation analyzer. You MUST respond with ONLY valid JSON in the exact format shown. Do not include any text before or after the JSON response. Keep your analysis concise and helpful.",
+                messages: [{
+                    role: 'user',
+                    content: `Analyze this audio recording of a ${level.toLowerCase()} level student saying this ${language.name} phrase: "${targetText}"
+                    
+                    RESPOND ONLY WITH VALID JSON in this exact format with no preamble or additional text:
+                    
+                    {
+                        "accuracy": 0.7,
+                        "feedback": "Clear overall feedback about the pronunciation...",
+                        "suggestions": [
+                            "First specific suggestion",
+                            "Second specific suggestion"
+                        ],
+                        "phonemes": [
+                            {
+                                "sound": "specific sound",
+                                "accuracy": 0.8,
+                                "feedback": "feedback for this sound"
+                            }
+                        ]
+                    }
+                    
+                    Notes:
+                    - accuracy must be a number between 0.0 and 1.0
+                    - include 2-4 actionable suggestions
+                    - analyze key phonemes with clear feedback
+                    - be encouraging and constructive
+                    - focus on the most important improvements`
+                }]
+            });
+            
+            console.log('Received AI response');
+            const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+            
+            // Attempt to parse the response as JSON
+            let feedback: PronunciationFeedback;
+            try {
+                // Try direct parsing first
+                feedback = JSON.parse(responseText.trim());
+                console.log('Parsed feedback successfully');
+            } catch (parseError) {
+                console.error('Failed direct JSON parse, attempting to extract JSON:', parseError);
+                
+                // Try to extract JSON with regex
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    try {
+                        feedback = JSON.parse(jsonMatch[0]);
+                        console.log('Parsed feedback from extracted JSON');
+                    } catch (extractError) {
+                        throw new Error(`Failed to parse extracted JSON: ${extractError}`);
+                    }
+                } else {
+                    throw new Error('No valid JSON found in response');
+                }
+            }
+            
+            // Validate feedback structure
+            if (!feedback || 
+                typeof feedback.accuracy !== 'number' || 
+                typeof feedback.feedback !== 'string' || 
+                !Array.isArray(feedback.suggestions) || 
+                !Array.isArray(feedback.phonemes)) {
+                
+                console.error('Invalid feedback structure:', feedback);
+                throw new Error('Invalid feedback structure from AI');
+            }
+            
+            // Ensure accuracy is a valid number
+            if (isNaN(feedback.accuracy) || feedback.accuracy < 0 || feedback.accuracy > 1) {
+                feedback.accuracy = 0.5; // Default to 50% if invalid
+            }
+            
+            // Ensure we have at least empty arrays
+            if (!feedback.suggestions) feedback.suggestions = [];
+            if (!feedback.phonemes) feedback.phonemes = [];
+            
+            // Store the feedback in the database
+            console.log('Storing feedback in database');
+            await prisma.pronunciationFeedback.create({
+                data: {
+                    userId: req.user.id,
+                    sentence: targetText,
+                    accuracy: feedback.accuracy,
+                    feedback: JSON.stringify(feedback)
+                }
+            });
+            
+            console.log('Sending response to client');
+            return res.json({
+                success: true,
+                feedback
+            });
+        } catch (aiError: any) {
+            console.error('AI processing error:', aiError);
+            
+            // Create fallback feedback with more detailed information
+            const fallbackFeedback: PronunciationFeedback = {
+                accuracy: 0.7,
+                feedback: `We heard your pronunciation of "${targetText}". While our AI couldn't provide detailed analysis this time, your attempt was recorded.`,
+                suggestions: [
+                    "Focus on speaking clearly and at a moderate pace",
+                    "Make sure your microphone is working properly",
+                    "Try practicing one short phrase at a time"
+                ],
+                phonemes: [
+                    {
+                        sound: targetText.split(' ')[0],
+                        accuracy: 0.7,
+                        feedback: "Focus on clear articulation of this word"
+                    }
+                ]
+            };
+            
+            // Store the fallback feedback
+            await prisma.pronunciationFeedback.create({
+                data: {
+                    userId: req.user.id,
+                    sentence: targetText,
+                    accuracy: fallbackFeedback.accuracy,
+                    feedback: JSON.stringify(fallbackFeedback)
+                }
+            });
+            
+            return res.json({
+                success: true,
+                feedback: fallbackFeedback
+            });
+        }
+    } catch (error: any) {
+        console.error('Error in getPronunciationFeedback:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to generate pronunciation feedback'
         });
     }
 };

@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function register(name: string, email: string, password: string) {
     try {
-      const response = await api.post('/auth/register', { name, email, password });
+      const response = await api.post('/auth/register', { fullName: name, email, password });
       const { token, refreshToken, user } = response.data.data;
       
       await AsyncStorage.multiSet([

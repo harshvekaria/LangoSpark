@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,17 +7,51 @@ import { useColorScheme } from 'react-native';
 import { Colors } from '../../constants/Colors';
 import { SpotifyCard } from '../../components/ui/SpotifyCard';
 import { SpotifyButton } from '../../components/ui/SpotifyButton';
+import { progressService } from '../../services/endpointService';
+
+interface LanguageProgress {
+  language: {
+    id: string;
+    name: string;
+  };
+  level: string;
+  progress: {
+    totalLessons: number;
+    completedLessons: number;
+    completionRate: number;
+    averageScore: number;
+  };
+}
 
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const [languages, setLanguages] = useState<LanguageProgress[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUserLanguages();
+  }, []);
+
+  const fetchUserLanguages = async () => {
+    try {
+      const response = await progressService.getDashboard();
+      if (response.success) {
+        setLanguages(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching user languages:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.mainContainer, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.header}>
+        <View style={styles.welcomeSection}>
           <Text style={[styles.title, { color: colors.text }]}>Welcome, {user?.name}!</Text>
           <TouchableOpacity onPress={signOut} style={styles.logoutButton}>
             <FontAwesome name="sign-out" size={24} color={colors.tint} />
@@ -29,17 +63,23 @@ export default function HomeScreen() {
           <View style={styles.statsContainer}>
             <SpotifyCard style={styles.statCard} variant="elevated">
               <FontAwesome name="language" size={24} color={colors.tint} />
-              <Text style={[styles.statNumber, { color: colors.text }]}>3</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>{languages.length}</Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Languages</Text>
             </SpotifyCard>
             <SpotifyCard style={styles.statCard} variant="elevated">
               <FontAwesome name="book" size={24} color={colors.tint} />
-              <Text style={[styles.statNumber, { color: colors.text }]}>12</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>
+                {languages.reduce((sum, lang) => sum + lang.progress.totalLessons, 0)}
+              </Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Lessons</Text>
             </SpotifyCard>
             <SpotifyCard style={styles.statCard} variant="elevated">
               <FontAwesome name="star" size={24} color={colors.tint} />
-              <Text style={[styles.statNumber, { color: colors.text }]}>85%</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>
+                {languages.length > 0 
+                  ? Math.round(languages.reduce((sum, lang) => sum + lang.progress.completionRate, 0) / languages.length)
+                  : 0}%
+              </Text>
               <Text style={[styles.statLabel, { color: colors.secondaryText }]}>Progress</Text>
             </SpotifyCard>
           </View>
@@ -53,60 +93,55 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            <SpotifyCard 
-              style={styles.languageCard}
-              variant="elevated"
-              onPress={() => router.push('/languages')}
-            >
-              <Image 
-                source={{ uri: 'https://images.unsplash.com/photo-1464802686167-b939a6910659?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80' }} 
-                style={styles.languageImage} 
-              />
-              <View style={styles.languageInfo}>
-                <Text style={[styles.languageName, { color: colors.text }]}>Spanish</Text>
-                <Text style={[styles.languageProgress, { color: colors.secondaryText }]}>Beginner • Lesson 3/10</Text>
-              </View>
-            </SpotifyCard>
-            
-            <SpotifyCard 
-              style={styles.languageCard}
-              variant="elevated"
-              onPress={() => router.push('/languages')}
-            >
-              <Image 
-                source={{ uri: 'https://images.unsplash.com/photo-1493956103509-9ea7df12ba76?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80' }} 
-                style={styles.languageImage} 
-              />
-              <View style={styles.languageInfo}>
-                <Text style={[styles.languageName, { color: colors.text }]}>French</Text>
-                <Text style={[styles.languageProgress, { color: colors.secondaryText }]}>Intermediate • Lesson 5/12</Text>
-              </View>
-            </SpotifyCard>
-            
-            <SpotifyCard 
-              style={styles.languageCard}
-              variant="elevated"
-              onPress={() => router.push('/languages')}
-            >
-              <Image 
-                source={{ uri: 'https://images.unsplash.com/photo-1523731407965-2430cd12f5e4?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80' }} 
-                style={styles.languageImage} 
-              />
-              <View style={styles.languageInfo}>
-                <Text style={[styles.languageName, { color: colors.text }]}>Japanese</Text>
-                <Text style={[styles.languageProgress, { color: colors.secondaryText }]}>Beginner • Lesson 1/15</Text>
-              </View>
-            </SpotifyCard>
-          </ScrollView>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <FontAwesome name="spinner" size={24} color={colors.tint} />
+            </View>
+          ) : languages.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {languages.map((lang) => (
+                <SpotifyCard 
+                  key={lang.language.id}
+                  style={styles.languageCard}
+                  variant="elevated"
+                  onPress={() => router.push(`/languages/${lang.language.id}`)}
+                >
+                  <View style={styles.languageInfo}>
+                    <Text style={[styles.languageName, { color: colors.text }]}>{lang.language.name}</Text>
+                    <Text style={[styles.languageProgress, { color: colors.secondaryText }]}>
+                      {lang.level} • Lesson {lang.progress.completedLessons + 1}/{lang.progress.totalLessons}
+                    </Text>
+                    <View style={styles.progressBarContainer}>
+                      <View 
+                        style={[
+                          styles.progressBar, 
+                          { 
+                            width: `${lang.progress.completionRate}%`,
+                            backgroundColor: colors.tint 
+                          }
+                        ]} 
+                      />
+                    </View>
+                  </View>
+                </SpotifyCard>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyState}>
+              <FontAwesome name="language" size={40} color={colors.secondaryText} />
+              <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
+                Start learning your first language!
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
           <View style={styles.actionButtonsRow}>
             <SpotifyButton 
-              title="Explore Languages" 
-              onPress={() => router.push('/explore')}
+              title="Start Practice" 
+              onPress={() => router.push('/languages')}
               style={styles.actionButton}
             />
             <SpotifyButton 
@@ -132,12 +167,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 40,
   },
-  header: {
+  welcomeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   title: {
     fontSize: 28,
@@ -194,12 +229,6 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
   },
-  languageImage: {
-    width: '100%',
-    height: 120,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-  },
   languageInfo: {
     padding: 12,
   },
@@ -218,5 +247,30 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     marginHorizontal: 5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 20,
+  },
+  progressBarContainer: {
+    height: 10,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 5,
+    marginTop: 4,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 5,
   },
 });

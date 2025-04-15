@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../services/api';
 import { Colors } from '../../constants/Colors';
 import { useColorScheme } from 'react-native';
+import { LogoSvg } from '../../components/LogoSvg';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -41,6 +42,10 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.logoContainer}>
+        <LogoSvg width={160} height={80} color={colors.tint} />
+      </View>
+      
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Reset Password</Text>
         <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
@@ -89,8 +94,12 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: 50,
+    marginBottom: 20,
+  },
   header: {
-    marginTop: 60,
     marginBottom: 40,
   },
   title: {

@@ -2,6 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // Get the API URL from environment variables or fallback to development
 const API_URL = Constants.expoConfig?.extra?.apiUrl || 
@@ -12,20 +13,53 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  maxContentLength: Infinity,
+  maxBodyLength: Infinity,
+  timeout: 60000, // 60 seconds timeout for large audio files
 });
 
-// Add a request interceptor to add the auth token
+// Helper function to get token based on platform
+export const getToken = async () => {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem('token');
+  } else {
+    return await AsyncStorage.getItem('token');
+  }
+};
+
+// Helper function to set token based on platform
+export const setToken = async (token: string) => {
+  if (Platform.OS === 'web') {
+    localStorage.setItem('token', token);
+  } else {
+    await AsyncStorage.setItem('token', token);
+  }
+};
+
+// Helper function to remove token based on platform
+export const removeToken = async () => {
+  if (Platform.OS === 'web') {
+    localStorage.removeItem('token');
+  } else {
+    await AsyncStorage.removeItem('token');
+  }
+};
+
+// Add a request interceptor to handle authentication
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      // Get the token using the helper function
+      const token = await getToken();
+      
+      // If token exists, add it to the headers
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      
       return config;
     } catch (error) {
-      console.error('Request interceptor error:', error);
+      console.error('Error getting token:', error);
       return Promise.reject(error);
     }
   },
@@ -36,46 +70,14 @@ api.interceptors.request.use(
 
 // Add a response interceptor to handle errors
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   async (error) => {
-    const originalRequest = error.config;
-
-    // Handle token expiration
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        const refreshToken = await AsyncStorage.getItem('refreshToken');
-        if (refreshToken) {
-          const response = await axios.post(`${API_URL}/auth/refresh-token`, {
-            refreshToken
-          });
-          
-          const { token, refreshToken: newRefreshToken } = response.data;
-          await AsyncStorage.multiSet([
-            ['token', token],
-            ['refreshToken', newRefreshToken]
-          ]);
-          
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        await AsyncStorage.multiRemove(['token', 'refreshToken']);
-        router.replace('/auth/login');
-        return Promise.reject(refreshError);
-      }
-    }
-
-    // Handle other errors
-    if (error.response?.status === 403) {
-      await AsyncStorage.multiRemove(['token', 'refreshToken']);
+    if (error.response?.status === 401) {
+      // Handle unauthorized access
+      await removeToken();
+      // Redirect to login page
       router.replace('/auth/login');
     }
-
     return Promise.reject(error);
   }
 ); 

@@ -36,7 +36,10 @@ function RootLayoutNav() {
         }}
       >
         {!user ? (
-          <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+          <>
+            <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+            <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+          </>
         ) : (
           <>
             <Stack.Screen 

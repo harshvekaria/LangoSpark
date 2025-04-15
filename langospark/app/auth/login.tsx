@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { router } from 'expo-router';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
 import { useColorScheme } from 'react-native';
+import { LogoSvg } from '../../components/LogoSvg';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -35,12 +36,7 @@ export default function LoginScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.logoContainer}>
-        <Image 
-          source={require('../../assets/images/icon.png')} 
-          style={styles.logo} 
-          resizeMode="contain"
-        />
-        <Text style={[styles.title, { color: colors.text }]}>LangoSpark</Text>
+        <LogoSvg width={180} height={90} color={colors.tint} />
       </View>
 
       <View style={styles.form}>
@@ -123,17 +119,8 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: 80,
+    marginTop: 90,
     marginBottom: 50,
-  },
-  logo: {
-    width: 70,
-    height: 70,
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
   },
   form: {
     marginBottom: 30,

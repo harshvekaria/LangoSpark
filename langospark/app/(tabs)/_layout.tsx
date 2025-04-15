@@ -3,6 +3,7 @@ import React from 'react';
 import { useColorScheme, Platform, View } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
+import { LogoSvg, LogoIconSvg } from '../../components/LogoSvg';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -41,12 +42,15 @@ export default function TabLayout() {
           fontWeight: '500',
           marginTop: -3,
         },
-        headerShown: false,
+        headerShown: true,
+        headerTitle: () => <LogoSvg color={colors.tint} />,
+        headerTitleAlign: 'center',
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
+          headerShown: true,
           tabBarIcon: ({ color, focused }) => (
             <View style={{ opacity: focused ? 1 : 0.8 }}>
               <FontAwesome 
@@ -62,6 +66,7 @@ export default function TabLayout() {
         name="languages"
         options={{
           title: 'Practice',
+          headerShown: true,
           tabBarIcon: ({ color, focused }) => (
             <View style={{ opacity: focused ? 1 : 0.8 }}>
               <FontAwesome 
@@ -77,6 +82,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
+          headerShown: true,
           tabBarIcon: ({ color, focused }) => (
             <View style={{ opacity: focused ? 1 : 0.8 }}>
               <FontAwesome 

@@ -51,7 +51,7 @@ export default function HomeScreen() {
   return (
     <View style={[styles.mainContainer, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.header}>
+        <View style={styles.welcomeSection}>
           <Text style={[styles.title, { color: colors.text }]}>Welcome, {user?.name}!</Text>
           <TouchableOpacity onPress={signOut} style={styles.logoutButton}>
             <FontAwesome name="sign-out" size={24} color={colors.tint} />
@@ -167,12 +167,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 40,
   },
-  header: {
+  welcomeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
   title: {
     fontSize: 28,

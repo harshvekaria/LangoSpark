@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { api } from '../../../../services/api';
+import { api, getToken } from '../../../../services/api';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
 import { Colors } from '../../../../constants/Colors';
 import { useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system';
+import { lessonService } from '../../../../services/endpointService';
 
 interface ConversationPrompt {
   context: string;
@@ -22,6 +24,17 @@ interface ConversationPrompt {
   culturalNotes: string;
 }
 
+interface PronunciationFeedback {
+  accuracy: number;
+  feedback: string;
+  suggestions: string[];
+  phonemes: Array<{
+    sound: string;
+    accuracy: number;
+    feedback: string;
+  }>;
+}
+
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams();
   const [prompt, setPrompt] = useState<ConversationPrompt | null>(null);
@@ -30,14 +43,18 @@ export default function ConversationScreen() {
   const [conversationHistory, setConversationHistory] = useState<Array<{
     text: string;
     isUser: boolean;
+    feedback?: PronunciationFeedback;
   }>>([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [webRecording, setWebRecording] = useState<MediaRecorder | null>(null);
+  const [nativeRecording, setNativeRecording] = useState<Audio.Recording | null>(null);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  
+  // Use a ref to store the current recording script to avoid state sync issues
+  const activeScriptRef = useRef<{ target: string; translation: string } | null>(null);
 
   useEffect(() => {
     generateConversationPrompt();
@@ -45,8 +62,11 @@ export default function ConversationScreen() {
       if (sound) {
         sound.unloadAsync();
       }
-      if (recording) {
-        recording.stopAndUnloadAsync();
+      if (webRecording) {
+        webRecording.stop();
+      }
+      if (nativeRecording) {
+        nativeRecording.stopAndUnloadAsync();
       }
     };
   }, [id]);
@@ -60,15 +80,11 @@ export default function ConversationScreen() {
       });
       
       if (response.data.success) {
-        // Extract the content from the conversation data
         const conversationData = response.data.conversation.content;
-        
-        // Transform the data to match our expected format
         const formattedPrompt = {
           context: conversationData.context || '',
           vocabulary: conversationData.vocabulary || [],
           script: conversationData.script?.map((item: Record<string, string>) => {
-            // Handle different language code formats
             const languageCode = Object.keys(item).find(key => key !== 'english') || 'target';
             return {
               target: item[languageCode] || '',
@@ -93,90 +109,305 @@ export default function ConversationScreen() {
     }
   };
 
-  const startRecording = async () => {
+  const startRecording = async (scriptItem: { target: string; translation: string }) => {
     try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      // Always require a script item
+      if (!scriptItem || !scriptItem.target) {
+        Alert.alert('Error', 'Please select a phrase to practice');
+        return;
+      }
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-      Alert.alert('Error', 'Failed to start recording');
+      // Store script in ref for usage in callbacks
+      activeScriptRef.current = scriptItem;
+      console.log('Script selected for recording:', scriptItem.target);
+
+      // Check if user is authenticated
+      const token = await getToken();
+      if (!token) {
+        Alert.alert('Error', 'Please log in to use the pronunciation feature');
+        return;
+      }
+
+      if (Platform.OS === 'web') {
+        // Web platform handling
+        console.log('Starting web recording...');
+        try {
+          // Request microphone access
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1 // Mono audio to reduce size
+            } 
+          });
+
+          // Create MediaRecorder with optimal settings for voice
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus',
+            audioBitsPerSecond: 64000 // Reduced bitrate for smaller file size but still good for speech
+          });
+
+          const chunks: Blob[] = [];
+
+          mediaRecorder.ondataavailable = (e) => {
+            console.log('Data available:', e.data.size);
+            if (e.data.size > 0) {
+              chunks.push(e.data);
+            }
+          };
+
+          // Set a time limit for recording (15 seconds max)
+          const recordingTimeout = setTimeout(() => {
+            if (mediaRecorder.state === 'recording') {
+              console.log('Recording time limit reached, stopping...');
+              mediaRecorder.stop();
+            }
+          }, 15000); // 15 second limit
+
+          mediaRecorder.onstop = async () => {
+            try {
+              clearTimeout(recordingTimeout);
+              console.log('Recording stopped, processing audio...');
+              
+              // Get current script from ref
+              const currentScript = activeScriptRef.current;
+              if (!currentScript) {
+                console.error('No script found for this recording');
+                Alert.alert('Error', 'No practice phrase selected for this recording');
+                return;
+              }
+              
+              console.log('Using script for feedback:', currentScript.target);
+              
+              const blob = new Blob(chunks, { type: 'audio/webm' });
+              console.log('Blob size:', blob.size);
+              
+              // Check if file is too large
+              if (blob.size > 10 * 1024 * 1024) { // 10MB
+                console.error('Audio file too large');
+                Alert.alert('Error', 'Recording too large. Please try a shorter phrase.');
+                return;
+              }
+
+              const reader = new FileReader();
+              
+              // Convert blob to base64 using a Promise
+              const base64Audio = await new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => {
+                  try {
+                    const base64 = reader.result as string;
+                    console.log('Audio data processed, length:', base64.length);
+                    resolve(base64);
+                  } catch (error) {
+                    reject(error);
+                  }
+                };
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+              });
+
+              setFeedbackLoading(true);
+              console.log('Sending audio data to server...');
+              
+              try {
+                const response = await lessonService.getPronunciationFeedback({
+                  languageId: id as string,
+                  audioData: base64Audio,
+                  targetText: currentScript.target,
+                  level: 'BEGINNER'
+                });
+                
+                console.log('Server response received');
+                if (response.success && response.feedback) {
+                  setConversationHistory(prev => [
+                    ...prev,
+                    { 
+                      text: currentScript.target, 
+                      isUser: true,
+                      feedback: response.feedback
+                    }
+                  ]);
+                } else {
+                  console.error('Invalid server response:', response);
+                  Alert.alert('Error', response.error || 'Failed to analyze pronunciation');
+                }
+              } catch (apiError: any) {
+                console.error('API error:', apiError.message);
+                Alert.alert('Error', apiError.message || 'Failed to process pronunciation. Please try again.');
+              }
+            } catch (error: any) {
+              console.error('Error processing audio:', error);
+              Alert.alert('Error', error.message || 'Failed to process audio. Please try again.');
+            } finally {
+              setFeedbackLoading(false);
+              chunks.length = 0; // Clear the chunks array
+              // Stop all tracks in the stream
+              stream.getTracks().forEach(track => track.stop());
+            }
+          };
+
+          // Start recording with a timeslice to ensure we get data (smaller chunks)
+          mediaRecorder.start(500); // Get data every 500ms for better handling
+          console.log('MediaRecorder started');
+          setWebRecording(mediaRecorder);
+          setIsRecording(true);
+        } catch (error) {
+          console.error('Failed to initialize web recording:', error);
+          Alert.alert('Error', 'Failed to access microphone. Please check permissions.');
+        }
+      } else {
+        // Native platform handling for Expo
+        console.log('Starting native recording...');
+        try {
+          await Audio.requestPermissionsAsync();
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          });
+
+          // Use lower quality recording options to reduce file size
+          const recordingOptions = {
+            ...Audio.RecordingOptionsPresets.LOW_QUALITY,
+            android: {
+              ...Audio.RecordingOptionsPresets.LOW_QUALITY.android,
+              extension: '.m4a',
+              outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+              audioEncoder: Audio.AndroidAudioEncoder.AAC,
+              sampleRate: 22050,
+              numberOfChannels: 1,
+              bitRate: 64000,
+            },
+            ios: {
+              ...Audio.RecordingOptionsPresets.LOW_QUALITY.ios,
+              extension: '.m4a',
+              outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+              audioQuality: Audio.IOSAudioQuality.LOW,
+              sampleRate: 22050,
+              numberOfChannels: 1,
+              bitRate: 64000,
+              linearPCMBitDepth: 16,
+              linearPCMIsBigEndian: false,
+              linearPCMIsFloat: false,
+            },
+          };
+
+          const { recording } = await Audio.Recording.createAsync(recordingOptions);
+          
+          console.log('Native recording created with script:', activeScriptRef.current?.target);
+          setNativeRecording(recording);
+          setIsRecording(true);
+          
+          // Set a time limit for recording
+          setTimeout(() => {
+            if (nativeRecording) {
+              console.log('Recording time limit reached, stopping...');
+              stopRecording();
+            }
+          }, 15000); // 15 second limit
+        } catch (error) {
+          console.error('Failed to initialize native recording:', error);
+          Alert.alert('Error', 'Failed to access microphone. Please check permissions.');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error starting recording:', error);
+      Alert.alert('Error', error.message || 'Failed to start recording. Please try again.');
     }
   };
 
   const stopRecording = async () => {
-    if (!recording) return;
-
     try {
-      setFeedbackLoading(true);
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setIsRecording(false);
-      setRecording(null);
-
-      if (uri) {
-        try {
-          console.log('Sending pronunciation feedback request with URI:', uri);
-          const response = await api.post('/ai-lessons/pronunciation-feedback', {
-            languageId: id,
-            audioUri: uri
-          });
-          
-          console.log('Pronunciation feedback response:', response.data);
-          
-          if (response.data.success && response.data.feedback) {
-            // Format the feedback to display in the UI
-            const feedbackData = response.data.feedback;
-            const formattedFeedback = `
-              ${feedbackData.feedback}
-              
-              Accuracy: ${Math.round(feedbackData.accuracy * 100)}%
-              
-              ${feedbackData.suggestions ? 'Suggestions:' : ''}
-              ${feedbackData.suggestions ? feedbackData.suggestions.map((s: string) => `• ${s}`).join('\n') : ''}
-            `;
+      if (Platform.OS === 'web') {
+        if (webRecording) {
+          console.log('Stopping web recording...');
+          webRecording.stop();
+          setWebRecording(null);
+        }
+      } else {
+        if (nativeRecording) {
+          console.log('Stopping native recording...');
+          try {
+            await nativeRecording.stopAndUnloadAsync();
+            const uri = nativeRecording.getURI();
+            console.log('Recording URI:', uri);
             
-            setFeedback(formattedFeedback.trim());
-          } else {
-            throw new Error(response.data.message || 'Invalid response format');
+            if (!uri) {
+              throw new Error('No recording URI found');
+            }
+            
+            // Get current script from ref
+            const currentScript = activeScriptRef.current;
+            if (!currentScript) {
+              console.error('No script found for this recording');
+              throw new Error('No practice phrase selected for this recording');
+            }
+            
+            console.log('Using script for native feedback:', currentScript.target);
+
+            try {
+              setFeedbackLoading(true);
+              console.log('Reading audio file...');
+              const base64Audio = await FileSystem.readAsStringAsync(uri, {
+                encoding: FileSystem.EncodingType.Base64
+              });
+              console.log('Audio data length:', base64Audio.length);
+
+              if (!base64Audio) {
+                throw new Error('Failed to read audio file');
+              }
+
+              console.log('Sending audio data to server...');
+              const response = await lessonService.getPronunciationFeedback({
+                languageId: id as string,
+                audioData: base64Audio,
+                targetText: currentScript.target,
+                level: 'BEGINNER'
+              });
+              
+              console.log('Server response received');
+              if (response.success && response.feedback) {
+                setConversationHistory(prev => [
+                  ...prev,
+                  { 
+                    text: currentScript.target, 
+                    isUser: true,
+                    feedback: response.feedback
+                  }
+                ]);
+              } else {
+                console.error('Invalid server response:', response);
+                Alert.alert('Error', response.error || 'Failed to analyze pronunciation');
+              }
+            } catch (error: any) {
+              console.error('Error processing audio:', error);
+              Alert.alert('Error', error.message || 'Failed to process audio. Please try again.');
+            } finally {
+              setFeedbackLoading(false);
+              // Clean up recording file
+              try {
+                await FileSystem.deleteAsync(uri);
+              } catch (error) {
+                console.error('Error deleting recording file:', error);
+              }
+            }
+          } catch (error: any) {
+            console.error('Error stopping recording:', error);
+            Alert.alert('Error', error.message || 'Failed to stop recording. Please try again.');
           }
-        } catch (apiError: any) {
-          console.error('API error during pronunciation feedback:', apiError);
-          throw apiError;
         }
       }
     } catch (error: any) {
-      console.error('Error stopping recording:', error);
-      Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to process recording'
-      );
+      console.error('Error in stopRecording:', error);
+      Alert.alert('Error', error.message || 'Failed to process recording. Please try again.');
     } finally {
-      setFeedbackLoading(false);
-    }
-  };
-
-  const playExample = async (text: string) => {
-    try {
-      if (sound) {
-        await sound.unloadAsync();
-      }
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: `https://api.langospark.com/tts?text=${encodeURIComponent(text)}` }
-      );
-      setSound(newSound);
-      await newSound.playAsync();
-    } catch (error) {
-      console.error('Error playing sound:', error);
-      Alert.alert('Error', 'Failed to play example');
+      setIsRecording(false);
+      setWebRecording(null);
+      setNativeRecording(null);
+      // DO NOT clear the activeScriptRef here
     }
   };
 
@@ -235,26 +466,107 @@ export default function ConversationScreen() {
                 </View>
               ))}
             </View>
+
+            <View style={[styles.scriptContainer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Text style={[styles.scriptTitle, { color: colors.text }]}>Practice Phrases</Text>
+              {prompt.script.map((item, index) => (
+                <View key={index} style={styles.scriptItem}>
+                  <View style={styles.scriptTextContainer}>
+                    <Text style={[styles.scriptTarget, { color: colors.text }]}>{item.target}</Text>
+                    <Text style={[styles.scriptTranslation, { color: colors.secondaryText }]}>{item.translation}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.recordButton,
+                      isRecording && activeScriptRef.current?.target === item.target
+                        ? [styles.recordingButton, { backgroundColor: '#F44336' }]
+                        : { backgroundColor: colors.tint }
+                    ]}
+                    onPress={() => isRecording && activeScriptRef.current?.target === item.target 
+                      ? stopRecording() 
+                      : startRecording(item)}
+                  >
+                    <FontAwesome
+                      name={isRecording && activeScriptRef.current?.target === item.target ? 'stop-circle' : 'microphone'}
+                      size={24}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
           </>
         )}
 
         <View style={styles.conversationHistory}>
           {conversationHistory.map((message, index) => (
-            <View
-              key={index}
-              style={[
-                styles.messageContainer,
-                message.isUser 
-                  ? [styles.userMessage, { backgroundColor: colors.tint }] 
-                  : [styles.botMessage, { backgroundColor: colors.card }]
-              ]}
-            >
-              <Text style={[
-                styles.messageText, 
-                { color: message.isUser ? '#FFFFFF' : colors.text }
-              ]}>
-                {message.text}
-              </Text>
+            <View key={index}>
+              <View
+                style={[
+                  styles.messageContainer,
+                  message.isUser 
+                    ? [styles.userMessage, { backgroundColor: colors.tint }] 
+                    : [styles.botMessage, { backgroundColor: colors.card }]
+                ]}
+              >
+                <Text style={[
+                  styles.messageText, 
+                  { color: message.isUser ? '#FFFFFF' : colors.text }
+                ]}>
+                  {message.text}
+                </Text>
+              </View>
+              {message.feedback && (
+                <View style={[styles.feedbackContainer, { backgroundColor: colors.card, borderColor: colors.tint }]}>
+                  <View style={styles.feedbackHeader}>
+                    <Text style={[styles.feedbackTitle, { color: colors.tint }]}>
+                      Pronunciation Feedback
+                    </Text>
+                    <Text style={[styles.accuracyText, { color: colors.tint }]}>
+                      {Math.round(message.feedback.accuracy * 100)}% Accuracy
+                    </Text>
+                  </View>
+                  <Text style={[styles.feedbackText, { color: colors.text }]}>
+                    {message.feedback.feedback}
+                  </Text>
+                  {message.feedback.suggestions && message.feedback.suggestions.length > 0 && (
+                    <View style={styles.suggestionsContainer}>
+                      <Text style={[styles.suggestionsTitle, { color: colors.text }]}>Suggestions:</Text>
+                      {message.feedback.suggestions.map((suggestion, idx) => (
+                        <Text key={idx} style={[styles.suggestionText, { color: colors.text }]}>
+                          • {suggestion}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  {message.feedback.phonemes && message.feedback.phonemes.length > 0 && (
+                    <View style={styles.phonemesContainer}>
+                      <Text style={[styles.phonemesTitle, { color: colors.text }]}>Sound Analysis:</Text>
+                      {message.feedback.phonemes.map((phoneme, idx) => (
+                        <View key={idx} style={styles.phonemeItem}>
+                          <Text style={[styles.phonemeSound, { color: colors.text }]}>
+                            {phoneme.sound}
+                          </Text>
+                          <View style={styles.phonemeAccuracyContainer}>
+                            <View 
+                              style={[
+                                styles.phonemeAccuracyBar,
+                                { 
+                                  width: `${phoneme.accuracy * 100}%`,
+                                  backgroundColor: colors.tint 
+                                }
+                              ]} 
+                            />
+                          </View>
+                          <Text style={[styles.phonemeFeedback, { color: colors.secondaryText }]}>
+                            {phoneme.feedback}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -269,19 +581,6 @@ export default function ConversationScreen() {
         </View>
       )}
 
-      {feedback && !feedbackLoading && (
-        <View style={[styles.feedbackContainer, { backgroundColor: colors.card, borderColor: colors.tint }]}>
-          <Text style={[styles.feedbackTitle, { color: colors.tint }]}>Pronunciation Feedback</Text>
-          <Text style={[styles.feedbackText, { color: colors.text }]}>{feedback}</Text>
-          <TouchableOpacity 
-            style={styles.closeFeedbackButton}
-            onPress={() => setFeedback(null)}
-          >
-            <FontAwesome name="close" size={16} color={colors.secondaryText} />
-          </TouchableOpacity>
-        </View>
-      )}
-
       <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.cardBorder }]}>
         <TextInput
           style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.cardBorder }]}
@@ -291,19 +590,6 @@ export default function ConversationScreen() {
           placeholderTextColor={colors.secondaryText}
           multiline
         />
-        <TouchableOpacity
-          style={[
-            styles.recordButton, 
-            isRecording ? [styles.recordingButton, { backgroundColor: '#F44336' }] : { backgroundColor: colors.tint }
-          ]}
-          onPress={isRecording ? stopRecording : startRecording}
-        >
-          <FontAwesome
-            name={isRecording ? 'stop-circle' : 'microphone'}
-            size={24}
-            color="#fff"
-          />
-        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.sendButton, { backgroundColor: userInput.trim() ? colors.tint : colors.cardBorder }]}
           onPress={sendMessage}
@@ -383,6 +669,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
   },
+  feedbackContainer: {
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  feedbackTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  accuracyText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  suggestionsContainer: {
+    marginTop: 8,
+  },
+  suggestionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  suggestionText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginLeft: 8,
+  },
+  phonemesContainer: {
+    marginTop: 12,
+  },
+  phonemesTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  phonemeItem: {
+    marginBottom: 8,
+  },
+  phonemeSound: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  phonemeAccuracyContainer: {
+    height: 4,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  phonemeAccuracyBar: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  phonemeFeedback: {
+    fontSize: 12,
+  },
   feedbackLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,28 +748,6 @@ const styles = StyleSheet.create({
   feedbackLoadingText: {
     marginLeft: 8,
     fontSize: 14,
-  },
-  feedbackContainer: {
-    padding: 16,
-    margin: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    position: 'relative',
-  },
-  feedbackTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  feedbackText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  closeFeedbackButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    padding: 5,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -453,5 +784,37 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scriptContainer: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  scriptTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  scriptItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  scriptTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  scriptTarget: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  scriptTranslation: {
+    fontSize: 14,
   },
 }); 

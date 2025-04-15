@@ -22,8 +22,8 @@ app.use(helmet()); // Security headers
 app.use(cors()); // Enable CORS
 app.use(compression()); // Compress responses
 app.use(morgan('dev')); // Logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(express.json({ limit: '50mb' })); // Parse JSON bodies with increased limit for audio
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Parse URL-encoded bodies with increased limit
 
 // API Routes
 app.use('/api/auth', authRoutes);

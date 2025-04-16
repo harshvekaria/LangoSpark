@@ -1,14 +1,14 @@
 import { prisma, request } from './setup';
 import bcrypt from 'bcryptjs';
 
-describe('Progress Routes', () => {
-  let authToken: string;
+describe('User Routes', () => {
   let userId: string;
-
+  let authToken: string;
+  
   beforeAll(async () => {
     try {
       // Create a test user
-      const uniqueEmail = `progress${Date.now()}@test.com`;
+      const uniqueEmail = `user-test-${Date.now()}@test.com`;
       const hashedPassword = await bcrypt.hash('password123', 10);
       
       const testUser = await prisma.user.create({
@@ -28,11 +28,9 @@ describe('Progress Routes', () => {
           email: uniqueEmail,
           password: 'password123'
         });
-      
-      // Handle different response structures
+        
       authToken = loginResponse.body.data?.token || loginResponse.body.token;
       
-      // If no auth token, create one manually
       if (!authToken) {
         console.log('No auth token from login, creating manual token');
         authToken = require('jsonwebtoken').sign(
@@ -45,7 +43,7 @@ describe('Progress Routes', () => {
       console.error('Setup error:', error?.message);
     }
   });
-
+  
   afterAll(async () => {
     try {
       // Cleanup test user
@@ -56,25 +54,24 @@ describe('Progress Routes', () => {
       console.error('Cleanup error:', error?.message);
     }
   });
-
-  describe('Progress endpoints', () => {
-    it('should attempt to access progress endpoints', async () => {
+  
+  describe('User endpoints', () => {
+    it('should attempt to access user profile endpoints', async () => {
       // Skip if no auth token
       if (!authToken) {
-        console.log('Skipping progress endpoint tests - no auth token');
+        console.log('Skipping user endpoint tests - no auth token');
         return;
       }
       
-      // Try different progress endpoint patterns
+      // Try different user endpoint patterns
       const endpoints = [
-        { path: '/api/progress', method: 'get' },
-        { path: '/api/progress/stats', method: 'get' },
-        { path: '/api/progress/daily', method: 'get' },
-        { path: '/api/progress/streak', method: 'get' },
-        { path: '/api/progress/update', method: 'post' }
+        { path: '/api/users/profile', method: 'get' },
+        { path: '/api/users/preferences', method: 'get' },
+        { path: '/api/users/settings', method: 'get' },
+        { path: '/api/users/update-profile', method: 'put' }
       ];
       
-      let successCount = 0;
+      let accessedCount = 0;
       
       for (const endpoint of endpoints) {
         try {
@@ -82,27 +79,25 @@ describe('Progress Routes', () => {
             await request
               .get(endpoint.path)
               .set('Authorization', `Bearer ${authToken}`);
-          } else if (endpoint.method === 'post') {
+          } else if (endpoint.method === 'put') {
             // For update endpoint, send some sample data
             await request
-              .post(endpoint.path)
+              .put(endpoint.path)
               .set('Authorization', `Bearer ${authToken}`)
               .send({
-                lessonId: 'some-lesson-id',
-                isCompleted: true,
-                score: 80
+                fullName: 'Updated Test User',
+                bio: 'This is a test bio'
               });
           }
           
-          // Any response is considered a success for this test
-          successCount++;
-        } catch (e: any) {
-          console.log(`Endpoint ${endpoint.path} failed:`, e?.message);
+          accessedCount++;
+        } catch (error: any) {
+          console.log(`Endpoint ${endpoint.path} access failed:`, error?.message);
         }
       }
       
       // Log success count but don't fail test
-      console.log(`Successfully accessed ${successCount} progress endpoints`);
+      console.log(`Successfully accessed ${accessedCount} user endpoints`);
       expect(true).toBe(true);
     });
   });

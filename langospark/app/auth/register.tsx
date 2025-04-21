@@ -1,76 +1,116 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
-import { useState } from 'react';
-import { router } from 'expo-router';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
-import { Colors } from '../../constants/Colors';
-import { useColorScheme } from 'react-native';
-import { LogoSvg } from '../../components/LogoSvg';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+} from "react-native";
+import { useState } from "react";
+import { router } from "expo-router";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../contexts/AuthContext";
+import { Colors } from "../../constants/Colors";
+import { useColorScheme } from "react-native";
+import { LogoSvg } from "../../components/LogoSvg";
+import Toast from "react-native-toast-message";
 
 export default function RegisterScreen() {
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
-  
-  const colorScheme = useColorScheme() ?? 'light';
+
+  const colorScheme = useColorScheme() ?? "light";
   const colors = Colors[colorScheme];
 
   const handleRegister = async () => {
     if (!fullName || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Please fill in all fields",
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Passwords do not match",
+      });
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Password must be at least 6 characters long",
+      });
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Attempting to register with:', { fullName, email });
+      console.log("Attempting to register with:", { fullName, email });
       await register(fullName, email, password);
-      console.log('Registration successful');
+      console.log("Registration successful");
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Registration successful! Please log in.",
+      });
     } catch (error: any) {
-      console.error('Registration error:', error);
-      Alert.alert(
-        'Registration Failed',
-        error.response?.data?.message || error.message || 'An error occurred during registration'
-      );
+      console.error("Registration error:", error);
+      Toast.show({
+        type: "error",
+        text1: "Registration Failed",
+        text2:
+          error.response?.data?.message ||
+          error.message ||
+          "An error occurred during registration",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <ScrollView 
+    <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
     >
       <View style={styles.logoContainer}>
         <LogoSvg width={160} height={80} color={colors.tint} />
       </View>
-      
+
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          Create Account
+        </Text>
         <Text style={[styles.subtitle, { color: colors.secondaryText }]}>
           Sign up to start your language learning journey
         </Text>
       </View>
-      
+
       <View style={styles.form}>
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="user" size={18} color={colors.secondaryText} style={styles.inputIcon} />
+        <View
+          style={[styles.inputContainer, { borderColor: colors.cardBorder }]}
+        >
+          <FontAwesome
+            name="user"
+            size={18}
+            color={colors.secondaryText}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="Full Name"
@@ -81,8 +121,15 @@ export default function RegisterScreen() {
           />
         </View>
 
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="envelope" size={18} color={colors.secondaryText} style={styles.inputIcon} />
+        <View
+          style={[styles.inputContainer, { borderColor: colors.cardBorder }]}
+        >
+          <FontAwesome
+            name="envelope"
+            size={18}
+            color={colors.secondaryText}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="Email"
@@ -94,8 +141,15 @@ export default function RegisterScreen() {
           />
         </View>
 
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="lock" size={20} color={colors.secondaryText} style={styles.inputIcon} />
+        <View
+          style={[styles.inputContainer, { borderColor: colors.cardBorder }]}
+        >
+          <FontAwesome
+            name="lock"
+            size={20}
+            color={colors.secondaryText}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="Password"
@@ -109,15 +163,22 @@ export default function RegisterScreen() {
             onPress={() => setShowPassword(!showPassword)}
           >
             <Ionicons
-              name={showPassword ? 'eye-off' : 'eye'}
+              name={showPassword ? "eye-off" : "eye"}
               size={24}
               color={colors.secondaryText}
             />
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.inputContainer, { borderColor: colors.cardBorder }]}>
-          <FontAwesome name="lock" size={20} color={colors.secondaryText} style={styles.inputIcon} />
+        <View
+          style={[styles.inputContainer, { borderColor: colors.cardBorder }]}
+        >
+          <FontAwesome
+            name="lock"
+            size={20}
+            color={colors.secondaryText}
+            style={styles.inputIcon}
+          />
           <TextInput
             style={[styles.input, { color: colors.text }]}
             placeholder="Confirm Password"
@@ -131,7 +192,7 @@ export default function RegisterScreen() {
             onPress={() => setShowConfirmPassword(!showConfirmPassword)}
           >
             <Ionicons
-              name={showConfirmPassword ? 'eye-off' : 'eye'}
+              name={showConfirmPassword ? "eye-off" : "eye"}
               size={24}
               color={colors.secondaryText}
             />
@@ -139,7 +200,11 @@ export default function RegisterScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.tint }, isLoading && styles.buttonDisabled]}
+          style={[
+            styles.button,
+            { backgroundColor: colors.tint },
+            isLoading && styles.buttonDisabled,
+          ]}
           onPress={handleRegister}
           disabled={isLoading}
         >
@@ -154,10 +219,10 @@ export default function RegisterScreen() {
           <Text style={[styles.footerText, { color: colors.secondaryText }]}>
             Already have an account?
           </Text>
-          <TouchableOpacity
-            onPress={() => router.replace('/auth/login')}
-          >
-            <Text style={[styles.loginText, { color: colors.tint }]}>Sign In</Text>
+          <TouchableOpacity onPress={() => router.replace("/auth/login")}>
+            <Text style={[styles.loginText, { color: colors.tint }]}>
+              Sign In
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -174,7 +239,7 @@ const styles = StyleSheet.create({
     paddingTop: 50,
   },
   logoContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   header: {
@@ -182,7 +247,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 10,
   },
   subtitle: {
@@ -193,8 +258,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 15,
@@ -206,7 +271,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    height: '100%',
+    height: "100%",
     fontSize: 16,
   },
   eyeIcon: {
@@ -215,21 +280,21 @@ const styles = StyleSheet.create({
   button: {
     padding: 15,
     borderRadius: 30,
-    alignItems: 'center',
+    alignItems: "center",
     marginVertical: 20,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 20,
     gap: 5,
   },
@@ -238,6 +303,6 @@ const styles = StyleSheet.create({
   },
   loginText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
-}); 
+});

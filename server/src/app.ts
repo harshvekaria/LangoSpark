@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.routes';
 import languageRoutes from './routes/language.routes';
 import progressRoutes from './routes/progress.routes';
 import aiLessonsRoutes from './routes/ai-lessons.routes';
+import leaderboardRoutes from './routes/leaderboard.routes';
 
 // Initialize express app
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/languages', languageRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/ai-lessons', aiLessonsRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // Health check route
 app.get('/health', (_req: Request, res: Response) => {

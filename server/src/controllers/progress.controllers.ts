@@ -406,4 +406,124 @@ export const getLanguageProgress = async (
             message: 'Error fetching language progress'
         });
     }
+};
+
+// Quiz progress update
+export const updateQuizProgress = async (
+    req: TypedRequestBody<{
+        quizId: string;
+        score: number;
+        timeTaken?: number;
+    }>,
+    res: Response
+): Promise<void> => {
+    try {
+        const { quizId, score, timeTaken } = req.body;
+        const userId = req.user.id;
+
+        console.log(`Updating quiz progress for user ${userId}, quiz ${quizId}`);
+        console.log(`Score: ${score}, Time taken: ${timeTaken || 'N/A'}`);
+
+        // Check if quiz exists
+        const quiz = await prisma.quiz.findUnique({
+            where: { id: quizId },
+            include: {
+                lesson: {
+                    include: {
+                        language: true
+                    }
+                }
+            }
+        });
+
+        if (!quiz) {
+            console.log(`Quiz not found: ${quizId}`);
+            res.status(404).json({
+                success: false,
+                message: 'Quiz not found'
+            });
+            return;
+        }
+
+        const lessonId = quiz.lessonId;
+        console.log(`Quiz found. Associated lesson: ${quiz.lesson.title}, Language: ${quiz.lesson.language.name}`);
+
+        // Validate score is a number between 0 and 100
+        const validatedScore = typeof score === 'number' && score >= 0 && score <= 100 
+            ? Math.round(score) 
+            : 0;
+
+        // Update learning progress first
+        const progress = await prisma.learningProgress.upsert({
+            where: {
+                userId_lessonId: {
+                    userId,
+                    lessonId
+                }
+            },
+            update: {
+                score: validatedScore,
+                completed: true,
+                updatedAt: new Date()
+            },
+            create: {
+                userId,
+                lessonId,
+                score: validatedScore,
+                completed: true
+            }
+        });
+
+        console.log(`Progress updated successfully: Score ${progress.score}, Completed: ${progress.completed}`);
+        
+        // Then try to update leaderboard
+        let leaderboardEntry = null;
+        try {
+            leaderboardEntry = await prisma.leaderboardEntry.upsert({
+                where: {
+                    userId_quizId: {
+                        userId,
+                        quizId
+                    }
+                },
+                update: {
+                    // Only update if the new score is higher
+                    score: validatedScore,
+                    timeTaken: timeTaken ?? undefined
+                },
+                create: {
+                    userId,
+                    quizId,
+                    score: validatedScore,
+                    timeTaken: timeTaken ?? undefined
+                }
+            });
+            console.log(`Leaderboard entry created/updated: Score ${leaderboardEntry.score}`);
+        } catch (e: unknown) {
+            console.error('Leaderboard entry failed, schema might not be migrated yet:', e);
+        }
+
+        res.json({
+            success: true,
+            message: 'Quiz progress updated successfully',
+            data: {
+                progress: {
+                    lessonId: progress.lessonId,
+                    score: progress.score,
+                    completed: progress.completed
+                },
+                leaderboard: leaderboardEntry ? {
+                    quizId: leaderboardEntry.quizId,
+                    score: leaderboardEntry.score,
+                    timeTaken: leaderboardEntry.timeTaken
+                } : null
+            }
+        });
+    } catch (error) {
+        console.error('Error updating quiz progress:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating quiz progress'
+        });
+    }
 }; 

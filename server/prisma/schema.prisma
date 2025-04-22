@@ -21,6 +21,7 @@ model User {
   pronunciationFeedback PronunciationFeedback[]
   conversationPractices ConversationPractice[]
   conversationExchanges ConversationExchange[]
+  leaderboardEntries    LeaderboardEntry[]
 
   // Language learning related fields
   nativeLanguage    String?
@@ -92,6 +93,7 @@ model Quiz {
   lessonId  String   @unique
   lesson    Lesson   @relation(fields: [lessonId], references: [id])
   questions Json     /// Array of multiple-choice questions
+  leaderboardEntries LeaderboardEntry[]
 }
 
 /// **Speech Recognition & AI Feedback**
@@ -166,6 +168,21 @@ model LearningProgress {
   lesson  Lesson  @relation(fields: [lessonId], references: [id])
 
   @@unique([userId, lessonId])
+}
+
+/// **Leaderboard**
+model LeaderboardEntry {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id])
+  score     Int      // User's score for the quiz
+  timeTaken Int?     // Time taken to complete the quiz in seconds (optional)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, quizId]) // Each user can have only one entry per quiz
+  @@index([score]) // Index for faster leaderboard sorting
 }
 
 enum Level {

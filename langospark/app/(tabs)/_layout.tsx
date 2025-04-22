@@ -79,6 +79,22 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="leaderboard"
+        options={{
+          title: 'Leaderboard',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ opacity: focused ? 1 : 0.8 }}>
+              <FontAwesome 
+                name="trophy" 
+                size={22} 
+                color={color} 
+              />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

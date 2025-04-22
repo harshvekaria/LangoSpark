@@ -61,6 +61,39 @@ export const progressService = {
   updateLessonProgress: async (data: { lessonId: string; completed: boolean; score?: number }) => {
     const response = await api.post('/progress/lesson', data);
     return response.data;
+  },
+  
+  updateQuizProgress: async (data: { quizId: string; score: number; timeTaken?: number }) => {
+    const response = await api.post('/progress/quiz', data);
+    return response.data;
+  }
+};
+
+// Leaderboard service
+export const leaderboardService = {
+  getGlobalLeaderboard: async () => {
+    const response = await api.get('/leaderboard/global');
+    return response.data;
+  },
+  
+  getQuizLeaderboard: async (quizId: string) => {
+    const response = await api.get(`/leaderboard/quiz/${quizId}`);
+    return response.data;
+  },
+  
+  getLanguageLeaderboard: async (languageId: string) => {
+    const response = await api.get(`/leaderboard/language/${languageId}`);
+    return response.data;
+  },
+  
+  getUserStats: async () => {
+    const response = await api.get('/leaderboard/user-stats');
+    return response.data;
+  },
+  
+  submitLeaderboardEntry: async (data: { quizId: string; score: number; timeTaken?: number }) => {
+    const response = await api.post('/leaderboard/entry', data);
+    return response.data;
   }
 };
 

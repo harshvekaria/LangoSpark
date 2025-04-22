@@ -18,7 +18,7 @@ import { Colors } from '../../../../../../constants/Colors';
 import { useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SpotifyButton } from '../../../../../../components/ui/SpotifyButton';
-import { progressService } from '../../../../../../services/endpointService';
+import { progressService, leaderboardService } from '../../../../../../services/endpointService';
 
 interface Question {
   question: string;
@@ -29,7 +29,7 @@ interface Question {
 
 export default function QuizScreen() {
   const { id, lessonId } = useLocalSearchParams();
-  const [quiz, setQuiz] = useState<{ questions: Question[] } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string, questions: Question[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('Quiz');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -40,6 +40,9 @@ export default function QuizScreen() {
   const [score, setScore] = useState(0);
   const [showExplanation, setShowExplanation] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [quizStartTime, setQuizStartTime] = useState<number>(0);
+  const [timeTaken, setTimeTaken] = useState<number>(0);
+  const [showLeaderboardButton, setShowLeaderboardButton] = useState(false);
   
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
@@ -57,6 +60,13 @@ export default function QuizScreen() {
       animateQuestion();
     }
   }, [currentQuestionIndex]);
+
+  // Start the timer when quiz loads
+  useEffect(() => {
+    if (!loading && quiz) {
+      setQuizStartTime(Date.now());
+    }
+  }, [loading, quiz]);
   
   const animateQuestion = () => {
     // Reset animations
@@ -89,6 +99,7 @@ export default function QuizScreen() {
         // Ensure quiz data has the expected structure
         if (response.data.lesson.quiz && Array.isArray(response.data.lesson.quiz.questions)) {
           setQuiz({
+            id: response.data.lesson.quiz.id,
             questions: response.data.lesson.quiz.questions
           });
           setTitle(response.data.lesson.title || 'Quiz');
@@ -121,6 +132,7 @@ export default function QuizScreen() {
           generateResponse.data.quiz.questions && 
           Array.isArray(generateResponse.data.quiz.questions)) {
         setQuiz({
+          id: generateResponse.data.quiz.id,
           questions: generateResponse.data.quiz.questions
         });
       } else {
@@ -172,42 +184,56 @@ export default function QuizScreen() {
   const submitQuiz = async () => {
     if (!quiz || !quiz.questions || quiz.questions.length === 0) return;
     
+    // Calculate the time taken
+    const endTime = Date.now();
+    const timeElapsed = Math.floor((endTime - quizStartTime) / 1000); // in seconds
+    setTimeTaken(timeElapsed);
+    
     const percentage = (score / quiz.questions.length) * 100;
     const roundedScore = Math.round(percentage);
     const lessonIdString = Array.isArray(lessonId) ? lessonId[0] : lessonId;
     
     try {
-      console.log(`Submitting quiz result for lesson ${lessonIdString}: score=${roundedScore}, completed=true`);
+      console.log(`Submitting quiz result for lesson ${lessonIdString}: score=${roundedScore}, completed=true, time=${timeElapsed}s`);
       
-      // First try using the service
+      // Update progress for the lesson
       try {
-        const response = await progressService.updateLessonProgress({
-          lessonId: lessonIdString,
+        const progressResponse = await progressService.updateQuizProgress({
+          quizId: quiz.id,
           score: roundedScore,
-          completed: true
+          timeTaken: timeElapsed
         });
         
-        console.log('Progress update response:', response);
+        console.log('Quiz progress update response:', progressResponse);
         
-        if (!response.success) {
-          throw new Error('Progress update via service failed');
+        if (!progressResponse.success) {
+          throw new Error('Quiz progress update via service failed');
         }
-      } catch (serviceError) {
-        console.error('Error updating progress via service:', serviceError);
         
-        // Fallback to direct API call
-        console.log('Falling back to direct API call...');
-        const directResponse = await api.post('/progress/lesson', {
-          lessonId: lessonIdString,
-          score: roundedScore,
-          completed: true
-        });
+        // Enable leaderboard button if the submission was successful
+        setShowLeaderboardButton(true);
+      } catch (progressError) {
+        console.error('Error updating quiz progress:', progressError);
         
-        console.log('Direct API response:', directResponse.data);
-        
-        // If this also fails, throw an error
-        if (!directResponse.data.success) {
-          throw new Error('Direct progress update also failed');
+        // Fallback to the old lesson progress endpoint if quiz endpoint fails
+        try {
+          const fallbackResponse = await progressService.updateLessonProgress({
+            lessonId: lessonIdString,
+            score: roundedScore,
+            completed: true
+          });
+          
+          console.log('Fallback progress update response:', fallbackResponse);
+          
+          if (!fallbackResponse.success) {
+            throw new Error('Fallback progress update failed');
+          }
+        } catch (fallbackError) {
+          console.error('Error with fallback progress update:', fallbackError);
+          Alert.alert(
+            'Progress Update Error',
+            'There was an issue saving your progress. Your score may not be reflected in your profile.'
+          );
         }
       }
       
@@ -226,6 +252,18 @@ export default function QuizScreen() {
       
       // Still mark as completed in the UI
       setQuizCompleted(true);
+    }
+  };
+  
+  const viewLeaderboard = () => {
+    if (quiz) {
+      router.push({
+        pathname: '/(tabs)/leaderboard',
+        params: { 
+          initialView: 'quiz', 
+          quizId: quiz.id 
+        }
+      });
     }
   };
   
@@ -287,6 +325,12 @@ export default function QuizScreen() {
               </Text>
             </View>
             
+            {timeTaken > 0 && (
+              <Text style={styles.timeDetail}>
+                Time: {Math.floor(timeTaken / 60)}:{(timeTaken % 60).toString().padStart(2, '0')}
+              </Text>
+            )}
+            
             <Text style={styles.resultMessage}>
               {score === quiz.questions.length
                 ? 'You aced it! Amazing work!'
@@ -322,6 +366,16 @@ export default function QuizScreen() {
           </LinearGradient>
           
           <View style={styles.resultButtons}>
+            {showLeaderboardButton && (
+              <SpotifyButton
+                title="View Leaderboard"
+                variant="secondary"
+                size="large"
+                style={styles.resultButton}
+                onPress={viewLeaderboard}
+              />
+            )}
+            
             <SpotifyButton
               title="Review Quiz"
               variant="secondary"
@@ -702,5 +756,10 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 2,
+  },
+  timeDetail: {
+    fontSize: 14,
+    color: '#333',
+    marginTop: 10,
   },
 }); 

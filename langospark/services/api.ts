@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 
 // Get the API URL from environment variables or fallback to development
 const API_URL = Constants.expoConfig?.extra?.apiUrl || 
-  (__DEV__ ? 'http://localhost:3000/api' : 'https://api.langospark.com/api');
+  (__DEV__ ? 'http://localhost:3000/api' : 'http://34.174.141.143:3000');
 
 export const api = axios.create({
   baseURL: API_URL,

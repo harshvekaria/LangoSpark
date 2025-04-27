@@ -55,23 +55,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(email: string, password: string) {
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const response = await api.post("/auth/login", { email, password });
       const { token, refreshToken, user } = response.data.data;
-      
-      await AsyncStorage.multiSet([
-        ['token', token],
-        ['refreshToken', refreshToken]
-      ]);
-      
+
+      await AsyncStorage.setItem("token", token);
+
+      if (refreshToken) {
+        await AsyncStorage.setItem("refreshToken", refreshToken);
+      } else {
+        await AsyncStorage.removeItem("refreshToken");
+      }
+
       setUser(user);
       if (isInitialized) {
-        router.replace('/(tabs)');
+        router.replace("/(tabs)");
       }
     } catch (error: any) {
-      console.error('Sign in failed:', error);
+      console.error("Sign in failed:", error);
       Alert.alert(
-        'Login Failed',
-        error.response?.data?.message || 'An error occurred during login'
+        "Login Failed",
+        error.response?.data?.message || "An error occurred during login"
       );
       throw error;
     }

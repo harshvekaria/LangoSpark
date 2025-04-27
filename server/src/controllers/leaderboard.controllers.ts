@@ -178,9 +178,18 @@ export const getGlobalLeaderboard = async (
             LIMIT 20
         `;
 
+        // Format numeric values to ensure they are numbers, not strings
+        const formattedTopUsers = Array.isArray(topUsers) ? topUsers.map(user => ({
+            userId: user.userId,
+            userName: user.userName,
+            quizzesCompleted: Number(user.quizzesCompleted),
+            averageScore: Number(user.averageScore),
+            totalScore: Number(user.totalScore)
+        })) : [];
+
         res.json({
             success: true,
-            data: topUsers
+            data: formattedTopUsers
         });
     } catch (error) {
         console.error('Error fetching global leaderboard:', error);

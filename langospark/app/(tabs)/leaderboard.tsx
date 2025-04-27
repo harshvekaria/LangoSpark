@@ -122,14 +122,31 @@ export default function LeaderboardScreen() {
   };
 
   const fetchGlobalLeaderboard = async () => {
-    const response = await leaderboardService.getGlobalLeaderboard();
-    if (response.success) {
-      setGlobalLeaderboard(response.data.map((entry: any, index: number) => ({
-        ...entry,
-        rank: index + 1
-      })));
-    } else {
-      setError('Failed to load global leaderboard');
+    try {
+      const response = await leaderboardService.getGlobalLeaderboard();
+      if (response.success && Array.isArray(response.data)) {
+        // Convert string values to numbers if needed and add rank
+        setGlobalLeaderboard(response.data.map((entry: any, index: number) => ({
+          userId: entry.userId,
+          userName: entry.userName,
+          rank: index + 1,
+          quizzesCompleted: typeof entry.quizzesCompleted === 'string' 
+            ? parseInt(entry.quizzesCompleted, 10) 
+            : entry.quizzesCompleted || 0,
+          averageScore: typeof entry.averageScore === 'string' 
+            ? parseFloat(entry.averageScore) 
+            : entry.averageScore || 0,
+          totalScore: typeof entry.totalScore === 'string' 
+            ? parseInt(entry.totalScore, 10) 
+            : entry.totalScore || 0
+        })));
+      } else {
+        console.error('Invalid global leaderboard data format:', response);
+        setError('Failed to load global leaderboard: Invalid data format');
+      }
+    } catch (error) {
+      console.error('Error fetching global leaderboard:', error);
+      setError('Failed to load global leaderboard: Network error');
     }
   };
 
